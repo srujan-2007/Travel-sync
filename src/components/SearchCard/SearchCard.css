@@ -1,0 +1,148 @@
+.search-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  margin-top: 2rem;
+  z-index: 10;
+}
+
+.search-card-container {
+  border-radius: 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-tabs {
+  display: flex;
+  gap: 2rem;
+  padding: 1rem 1.5rem 0.5rem;
+}
+
+.search-tab {
+  background: none;
+  border: none;
+  color: #a1a1aa;
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding-bottom: 0.5rem;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.search-tab:hover {
+  color: #fff;
+}
+
+.search-tab.active {
+  color: #fff;
+  font-weight: 500;
+}
+
+.search-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: var(--color-primary);
+}
+
+.search-divider-horizontal {
+  width: 100%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.search-fields {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem 0.5rem 0;
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  padding: 0.5rem 1.5rem;
+  cursor: pointer;
+}
+
+.field-icon {
+  display: flex;
+  align-items: center;
+}
+
+.field-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.field-content label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 0.2rem;
+}
+
+.field-content input {
+  background: transparent;
+  border: none;
+  color: #a1a1aa;
+  font-size: 0.8rem;
+  outline: none;
+  font-family: var(--font-body);
+  width: 100%;
+}
+
+.field-divider {
+  width: 1px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.search-button {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  margin-left: 1rem;
+}
+
+.search-button:hover {
+  background: var(--color-primary-hover);
+  transform: scale(1.05);
+}
+
+.search-arrow-annotation {
+  position: absolute;
+  right: -80px;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #e4e4e7;
+  font-family: 'Caveat', cursive, sans-serif;
+  font-size: 1.2rem;
+  transform: rotate(-5deg);
+  opacity: 0.8;
+}
+
+.search-arrow-annotation svg {
+  margin-top: 20px;
+}
