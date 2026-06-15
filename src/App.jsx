@@ -1,23 +1,82 @@
 import React from 'react';
-import Hero from './components/Hero/Hero';
-import StatsBar from './components/StatsBar/StatsBar';
-import Features from './components/Features/Features';
-import JourneySection from './components/JourneySection/JourneySection';
-import ItinerarySection from './components/ItinerarySection/ItinerarySection';
-import TestimonialSection from './components/TestimonialSection/TestimonialSection';
-import FooterSection from './components/FooterSection/FooterSection';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+
+// Import Pages
+import LandingPage from './pages/LandingPage/LandingPage';
+import Login from './pages/Login/Login';
+import Signup from './pages/Signup/Signup';
+import Dashboard from './pages/Dashboard/Dashboard';
+import Trips from './pages/Trips/Trips';
+import CreateTrip from './pages/CreateTrip/CreateTrip';
+import EditTrip from './pages/EditTrip/EditTrip';
+import TripDetails from './pages/TripDetails/TripDetails';
+import Profile from './pages/Profile/Profile';
+
+// Import Protected Route Component
+import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
 
 function App() {
   return (
-    <div className="app">
-      <Hero />
-      <StatsBar />
-      <Features />
-      <JourneySection />
-      <ItinerarySection />
-      <TestimonialSection />
-      <FooterSection />
-    </div>
+    <Router>
+      <div className="app">
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          
+          {/* Protected Routes */}
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/trips" 
+            element={
+              <ProtectedRoute>
+                <Trips />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/trips/create" 
+            element={
+              <ProtectedRoute>
+                <CreateTrip />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/trips/edit/:id" 
+            element={
+              <ProtectedRoute>
+                <EditTrip />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/trips/:id" 
+            element={
+              <ProtectedRoute>
+                <TripDetails />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/profile" 
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            } 
+          />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 

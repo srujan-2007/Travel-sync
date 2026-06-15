@@ -88,12 +88,12 @@ const FooterSection = () => {
           <div className="footer-col link-col">
             <h4 className="col-title">Product</h4>
             <ul>
-              <li><a href="#">Features</a></li>
-              <li><a href="#">Trip Planner</a></li>
-              <li><a href="#">Itinerary Builder</a></li>
-              <li><a href="#">Expense Tracker</a></li>
-              <li><a href="#">Travel Memories</a></li>
-              <li><a href="#">Trip Summaries</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Features coming soon!"); }}>Features</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Trip Planner coming soon!"); }}>Trip Planner</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Itinerary Builder coming soon!"); }}>Itinerary Builder</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Expense Tracker coming soon!"); }}>Expense Tracker</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Travel Memories coming soon!"); }}>Travel Memories</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Trip Summaries coming soon!"); }}>Trip Summaries</a></li>
             </ul>
           </div>
 
@@ -101,11 +101,11 @@ const FooterSection = () => {
           <div className="footer-col link-col">
             <h4 className="col-title">Company</h4>
             <ul>
-              <li><a href="#">About Us</a></li>
-              <li><a href="#">Careers</a></li>
-              <li><a href="#">Blog</a></li>
-              <li><a href="#">Press</a></li>
-              <li><a href="#">Contact</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("About Us coming soon!"); }}>About Us</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Careers coming soon!"); }}>Careers</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Blog coming soon!"); }}>Blog</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Press coming soon!"); }}>Press</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Contact coming soon!"); }}>Contact</a></li>
             </ul>
           </div>
 
@@ -113,11 +113,11 @@ const FooterSection = () => {
           <div className="footer-col link-col">
             <h4 className="col-title">Support</h4>
             <ul>
-              <li><a href="#">Help Center</a></li>
-              <li><a href="#">FAQs</a></li>
-              <li><a href="#">Privacy Policy</a></li>
-              <li><a href="#">Terms & Conditions</a></li>
-              <li><a href="#">Cookie Policy</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Help Center coming soon!"); }}>Help Center</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("FAQs coming soon!"); }}>FAQs</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Privacy Policy coming soon!"); }}>Privacy Policy</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Terms & Conditions coming soon!"); }}>Terms & Conditions</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); alert("Cookie Policy coming soon!"); }}>Cookie Policy</a></li>
             </ul>
           </div>
 
@@ -135,9 +135,9 @@ const FooterSection = () => {
             Made with <span className="heart">❤️</span> for travelers worldwide.
           </div>
           <div className="fb-right">
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">Contact</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); alert("Privacy Policy coming soon!"); }}>Privacy</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); alert("Terms coming soon!"); }}>Terms</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); alert("Contact coming soon!"); }}>Contact</a>
           </div>
         </div>
 

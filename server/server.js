@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 
 const connectDB = require("./config/db");
+const { errorHandler } = require("./middleware/errorMiddleware");
 
 const app = express();
 
@@ -21,7 +22,15 @@ app.use('/api/activities', require('./routes/activityRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
 app.use('/api/memories', require('./routes/memoryRoutes'));
 app.use('/api/locations', require('./routes/locationRoutes'));
+app.use('/api/upload', require('./routes/uploadRoutes'));
 
+// Serve static files from the uploads directory
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Global Error Handler Middleware
+// Must be placed after all routes to catch errors
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 

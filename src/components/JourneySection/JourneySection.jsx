@@ -1,9 +1,11 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, MapPin, Navigation, Bookmark, Plus, Crosshair, PlusCircle, MinusCircle, Star } from 'lucide-react';
 import './JourneySection.css';
 
 const MapsSection = () => {
+  const navigate = useNavigate();
   const features = [
     "Discover amazing spots",
     "Plan and visualize routes",
@@ -53,6 +55,7 @@ const MapsSection = () => {
             className="btn-explore-maps"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
+            onClick={() => navigate('/signup')}
           >
             Explore Maps <ArrowRight size={18} />
           </motion.button>

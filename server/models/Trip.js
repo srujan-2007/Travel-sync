@@ -8,6 +8,7 @@ const tripSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User', // This tells Mongoose that this ID references the 'User' collection
             required: true,
+            index: true,
         },
         tripName: {
             type: String,

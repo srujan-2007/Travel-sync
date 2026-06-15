@@ -1,43 +1,51 @@
 const Location = require('../models/Location');
 
-const createLocation = async (req, res) => {
+const createLocation = async (req, res, next) => {
     try {
         const location = new Location({ userId: req.user.id, ...req.body });
         const saved = await location.save();
         res.status(201).json(saved);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error);
     }
 };
 
-const getLocationsByTrip = async (req, res) => {
+const getLocationsByTrip = async (req, res, next) => {
     try {
         const items = await Location.find({ tripId: req.params.tripId, userId: req.user.id });
         res.json(items);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error);
     }
 };
 
-const updateLocation = async (req, res) => {
+const updateLocation = async (req, res, next) => {
     try {
         const item = await Location.findOneAndUpdate(
             { _id: req.params.id, userId: req.user.id },
             req.body,
             { new: true }
         );
+        if (!item) {
+            res.status(404);
+            return next(new Error('Location not found or unauthorized'));
+        }
         res.json(item);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error);
     }
 };
 
-const deleteLocation = async (req, res) => {
+const deleteLocation = async (req, res, next) => {
     try {
-        await Location.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+        const item = await Location.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+        if (!item) {
+            res.status(404);
+            return next(new Error('Location not found or unauthorized'));
+        }
         res.json({ message: 'Location removed' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        next(error);
     }
 };
 

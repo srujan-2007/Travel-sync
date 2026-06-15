@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Play, Sparkles, Trophy, ArrowRight } from 'lucide-react';
 import Navbar from '../Navbar/Navbar';
@@ -6,6 +7,7 @@ import SearchCard from '../SearchCard/SearchCard';
 import './Hero.css';
 
 const Hero = () => {
+  const navigate = useNavigate();
   return (
     <section className="hero-section">
       <Navbar />
@@ -56,10 +58,10 @@ const Hero = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.8 }}
           >
-            <button className="btn-primary-hero">
+            <button className="btn-primary-hero" onClick={() => navigate('/signup')}>
               Start Planning Now <ArrowRight size={18} />
             </button>
-            <button className="btn-secondary-hero">
+            <button className="btn-secondary-hero" onClick={() => alert('Demo video coming soon!')}>
               <Play size={18} fill="currentColor" /> Watch Demo
             </button>
           </motion.div>

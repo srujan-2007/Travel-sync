@@ -13,15 +13,30 @@ const generateToken = (userId) => {
 // @desc    Register a new user
 // @route   POST /api/auth/signup
 // @access  Public
-const signup = async (req, res) => {
+const signup = async (req, res, next) => {
     try {
         // 1. Get the data from the request body (which perfectly matches your User schema!)
         const { name, username, mobileNumber, password } = req.body;
 
+        // Manual Input Validation
+        if (!name || !username || !mobileNumber || !password) {
+            res.status(400);
+            return next(new Error('Please provide all required fields'));
+        }
+        if (password.length < 6) {
+            res.status(400);
+            return next(new Error('Password must be at least 6 characters long'));
+        }
+        if (mobileNumber.length < 10) {
+            res.status(400);
+            return next(new Error('Please provide a valid mobile number'));
+        }
+
         // 2. Check if a user with this username already exists
         const userExists = await User.findOne({ username });
         if (userExists) {
-            return res.status(400).json({ message: 'User already exists' });
+            res.status(400);
+            return next(new Error('User already exists'));
         }
 
         // 3. Hash the password before saving it to the database for security
@@ -46,20 +61,25 @@ const signup = async (req, res) => {
                 token: generateToken(user._id),
             });
         } else {
-            res.status(400).json({ message: 'Invalid user data' });
+            res.status(400);
+            return next(new Error('Invalid user data'));
         }
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error during signup' });
+        next(error);
     }
 };
 
 // @desc    Login existing user
 // @route   POST /api/auth/login
 // @access  Public
-const login = async (req, res) => {
+const login = async (req, res, next) => {
     try {
         const { username, password } = req.body;
+
+        if (!username || !password) {
+            res.status(400);
+            return next(new Error('Please provide username and password'));
+        }
 
         // 1. Find the user in the database by their username
         const user = await User.findOne({ username });
@@ -75,15 +95,63 @@ const login = async (req, res) => {
             });
         } else {
             // Either username not found or password incorrect
-            res.status(401).json({ message: 'Invalid username or password' });
+            res.status(401);
+            return next(new Error('Invalid username or password'));
         }
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error during login' });
+        next(error);
+    }
+};
+
+// @desc    Get user profile
+// @route   GET /api/auth/profile
+// @access  Private
+const getProfile = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        if (user) {
+            res.json(user);
+        } else {
+            res.status(404);
+            return next(new Error('User not found'));
+        }
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+const updateProfile = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id);
+
+        if (user) {
+            user.name = req.body.name || user.name;
+            user.mobileNumber = req.body.mobileNumber || user.mobileNumber;
+
+            const updatedUser = await user.save();
+
+            res.json({
+                _id: updatedUser._id,
+                name: updatedUser.name,
+                username: updatedUser.username,
+                mobileNumber: updatedUser.mobileNumber,
+                token: generateToken(updatedUser._id),
+            });
+        } else {
+            res.status(404);
+            return next(new Error('User not found'));
+        }
+    } catch (error) {
+        next(error);
     }
 };
 
 module.exports = {
     signup,
     login,
+    getProfile,
+    updateProfile,
 };

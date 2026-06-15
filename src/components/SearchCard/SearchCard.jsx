@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MapPin, Calendar, Users, Search, Wallet } from 'lucide-react';
 import { motion } from 'framer-motion';
 import './SearchCard.css';
 
 const SearchCard = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Destination');
 
   const tabs = [
@@ -82,7 +84,7 @@ const SearchCard = () => {
             </div>
           </div>
           
-          <button className="search-button">
+          <button className="search-button" onClick={() => navigate('/signup')}>
             <Search size={20} />
           </button>
         </div>
