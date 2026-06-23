@@ -6,6 +6,11 @@ const activityService = {
     return response.data;
   },
 
+  searchActivities: async (tripId, query) => {
+    const response = await api.get(`/activities/search?tripId=${tripId}&q=${query}`);
+    return response.data;
+  },
+
   createActivity: async (activityData) => {
     const response = await api.post('/activities', activityData);
     return response.data;

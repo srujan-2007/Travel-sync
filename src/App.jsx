@@ -15,11 +15,16 @@ import Profile from './pages/Profile/Profile';
 // Import Protected Route Component
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
 
+// Import AI Assistant Context & Wrapper
+import { AIChatProvider } from './context/AIChatContext';
+import AIAssistantWrapper from './components/AIAssistant/AIAssistantWrapper';
+
 function App() {
   return (
-    <Router>
-      <div className="app">
-        <Routes>
+    <AIChatProvider>
+      <Router>
+        <div className="app">
+          <Routes>
           {/* Public Routes */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
@@ -75,8 +80,12 @@ function App() {
             } 
           />
         </Routes>
-      </div>
-    </Router>
+          
+          {/* AI Travel Assistant Wrapper - will only show when authenticated */}
+          <AIAssistantWrapper />
+        </div>
+      </Router>
+    </AIChatProvider>
   );
 }
 

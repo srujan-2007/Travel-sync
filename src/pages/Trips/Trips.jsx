@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar/Sidebar';
+import SearchBar from '../../components/SearchBar/SearchBar';
+import TripFilters from '../../components/TripFilters/TripFilters';
 import tripService from '../../services/tripService';
 import { 
   Plus, PlaneTakeoff, MapPin, Calendar, 
@@ -14,6 +16,12 @@ function Trips() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState({
+    status: '',
+    budget: '',
+    destination: ''
+  });
 
   // Modal State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -21,15 +29,22 @@ function Trips() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    fetchTrips();
-  }, []);
+    const delayDebounceFn = setTimeout(() => {
+      fetchTrips();
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery, filters]);
 
   const fetchTrips = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await tripService.getTrips();
-      // data is an array of trips based on backend implementation
+      const params = {
+        q: searchQuery,
+        ...filters
+      };
+      const data = await tripService.getTrips(params);
       setTrips(data);
     } catch (err) {
       if (err.response && err.response.status === 401) {
@@ -44,6 +59,10 @@ function Trips() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleClearFilters = () => {
+    setFilters({ status: '', budget: '', destination: '' });
   };
 
   const openDeleteModal = (trip) => {
@@ -103,10 +122,23 @@ function Trips() {
 
         <div className="trips-header">
           <h1 className="trips-title text-gradient">My Trips</h1>
-          <Link to="/trips/create" className="create-trip-btn">
-            <Plus size={20} /> Create Trip
-          </Link>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <SearchBar 
+              value={searchQuery} 
+              onChange={setSearchQuery} 
+              placeholder="Search trips..." 
+            />
+            <Link to="/trips/create" className="create-trip-btn">
+              <Plus size={20} /> Create Trip
+            </Link>
+          </div>
         </div>
+
+        <TripFilters 
+          filters={filters} 
+          setFilters={setFilters} 
+          onClear={handleClearFilters} 
+        />
 
         {/* Error State Premium Card */}
         {error && (
@@ -133,11 +165,17 @@ function Trips() {
         {!error && !isLoading && trips.length === 0 && (
           <div className="trips-empty-state">
             <PlaneTakeoff size={64} className="empty-illustration" />
-            <h2>No Trips Yet</h2>
-            <p>Start planning your first journey and make unforgettable memories.</p>
-            <Link to="/trips/create" className="create-trip-btn">
-              <Plus size={20} /> Create Trip
-            </Link>
+            {searchQuery || Object.values(filters).some(val => val !== '') ? (
+              <h2>No trips match the selected filters.</h2>
+            ) : (
+              <>
+                <h2>No Trips Yet</h2>
+                <p>Start planning your first journey and make unforgettable memories.</p>
+                <Link to="/trips/create" className="create-trip-btn">
+                  <Plus size={20} /> Create Trip
+                </Link>
+              </>
+            )}
           </div>
         )}
 

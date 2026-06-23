@@ -1,0 +1,252 @@
+.travel-timeline-container {
+  padding: 1rem 0;
+  animation: fadeIn 0.4s ease;
+}
+
+.timeline-header {
+  padding: 1.5rem;
+  margin-bottom: 2.5rem;
+  text-align: center;
+  border-radius: 12px;
+}
+
+.timeline-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.timeline-subtitle {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.timeline-content {
+  position: relative;
+  padding-left: 1rem;
+}
+
+.timeline-day-group {
+  display: flex;
+  margin-bottom: 3rem;
+  position: relative;
+}
+
+.timeline-day-group:last-child {
+  margin-bottom: 1rem;
+}
+
+.day-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 1.5rem;
+  width: 20px;
+}
+
+.day-dot {
+  width: 16px;
+  height: 16px;
+  background-color: var(--color-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+  z-index: 2;
+  margin-top: 6px;
+}
+
+.day-line {
+  width: 2px;
+  flex-grow: 1;
+  background: linear-gradient(to bottom, var(--color-primary), rgba(59, 130, 246, 0.1));
+  margin-top: 4px;
+}
+
+.timeline-day-group:last-child .day-line {
+  display: none;
+}
+
+.day-content {
+  flex: 1;
+}
+
+.day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.day-header h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.day-memory-count {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.day-memories {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.memory-timeline-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.3s ease;
+}
+
+.memory-timeline-card:hover {
+  transform: translateY(-2px);
+}
+
+.memory-media-container {
+  position: relative;
+  width: 100%;
+  max-height: 400px;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.memory-media-preview {
+  width: 100%;
+  height: auto;
+  max-height: 400px;
+  object-fit: cover;
+}
+
+.memory-media-preview.clickable {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.memory-media-preview.clickable:hover {
+  opacity: 0.9;
+}
+
+.media-type-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  padding: 6px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.memory-details {
+  padding: 1.25rem;
+}
+
+.memory-caption {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.5rem;
+}
+
+.no-caption {
+  color: var(--color-text-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.memory-note {
+  font-size: 0.95rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 1rem;
+  border-radius: 8px;
+  border-left: 3px solid var(--color-primary);
+}
+
+/* Fullscreen Overlay */
+.fullscreen-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.fullscreen-image {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.close-fullscreen-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.close-fullscreen-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@media (min-width: 768px) {
+  .memory-timeline-card {
+    flex-direction: row;
+    height: 250px;
+  }
+  
+  .memory-media-container {
+    width: 40%;
+    height: 100%;
+    max-height: none;
+  }
+  
+  .memory-media-preview {
+    height: 100%;
+  }
+
+  .memory-details {
+    width: 60%;
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+}

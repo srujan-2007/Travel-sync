@@ -49,4 +49,24 @@ const deleteActivity = async (req, res, next) => {
     }
 };
 
-module.exports = { createActivity, getActivitiesByTrip, updateActivity, deleteActivity };
+const searchActivities = async (req, res, next) => {
+    try {
+        const { tripId, q } = req.query;
+        if (!tripId || !q) {
+            return res.json([]);
+        }
+        const items = await Activity.find({
+            userId: req.user.id,
+            tripId: tripId,
+            $or: [
+                { activityName: { $regex: q, $options: 'i' } },
+                { place: { $regex: q, $options: 'i' } }
+            ]
+        });
+        res.json(items);
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { createActivity, getActivitiesByTrip, updateActivity, deleteActivity, searchActivities };

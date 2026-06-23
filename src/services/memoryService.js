@@ -9,6 +9,16 @@ const memoryService = {
     return response.data;
   },
 
+  getMemoryTimeline: async (tripId) => {
+    const response = await api.get(`/memories/timeline/${tripId}`);
+    return response.data;
+  },
+
+  searchMemories: async (tripId, query) => {
+    const response = await api.get(`/memories/search?tripId=${tripId}&q=${query}`);
+    return response.data;
+  },
+
   createMemory: async (memoryData) => {
     const response = await api.post('/memories', memoryData);
     return response.data;

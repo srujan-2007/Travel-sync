@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Sidebar from '../../components/Sidebar/Sidebar';
-import { PlaneTakeoff, Wallet, Calendar, Plus, Eye, User, MapPin, Image as ImageIcon, Target, RefreshCw, Quote } from 'lucide-react';
+import { PlaneTakeoff, Wallet, Calendar, Plus, MapPin, Image as ImageIcon, Target, RefreshCw, Quote, TrendingUp, Lightbulb, Compass, PieChart as PieChartIcon, BarChart2 } from 'lucide-react';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 // Services
 import tripService from '../../services/tripService';
 import expenseService from '../../services/expenseService';
 import memoryService from '../../services/memoryService';
 import activityService from '../../services/activityService';
+import analyticsService from '../../services/analyticsService';
 
 import './Dashboard.css';
 
@@ -18,14 +20,10 @@ const TRAVEL_QUOTES = [
   { text: "Travel is the only thing you buy that makes you richer.", author: "Anonymous" },
   { text: "Life is short and the world is wide.", author: "Simon Raven" },
   { text: "Collect moments, not things.", author: "Aarti Khurana" },
-  { text: "To travel is to discover that everyone is wrong about other countries.", author: "Aldous Huxley" },
-  { text: "Investment in travel is an investment in yourself.", author: "Matthew Karsten" },
-  { text: "A journey of a thousand miles begins with a single step.", author: "Lao Tzu" },
-  { text: "Wherever you go, go with all your heart.", author: "Confucius" },
-  { text: "The journey not the arrival matters.", author: "T.S. Eliot" },
-  { text: "Take only memories, leave only footprints.", author: "Chief Seattle" },
-  { text: "Travel makes one modest. You see what a tiny place you occupy in the world.", author: "Gustave Flaubert" }
+  { text: "To travel is to discover that everyone is wrong about other countries.", author: "Aldous Huxley" }
 ];
+
+const COLORS = ['#14b8a6', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 function Dashboard() {
   const { currentUser } = useAuth();
@@ -39,7 +37,15 @@ function Dashboard() {
     upcomingTrips: 0,
     totalBudget: 0,
     totalExpenses: 0,
-    remainingBudget: 0
+    remainingBudget: 0,
+    totalMemories: 0,
+    totalActivities: 0
+  });
+
+  const [analytics, setAnalytics] = useState({
+    expensesByCategory: [],
+    topDestinations: [],
+    tripsByMonth: []
   });
 
   const [tripHighlights, setTripHighlights] = useState([]);
@@ -50,7 +56,6 @@ function Dashboard() {
     activity: null
   });
 
-  const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [randomQuote, setRandomQuote] = useState(null);
 
   useEffect(() => {
@@ -61,113 +66,103 @@ function Dashboard() {
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
-    setIsStatsLoading(true);
     setError(null);
     try {
-      const trips = await tripService.getTrips();
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // 1. Fetch Aggregated Statistics
+      const [
+        summary,
+        expensesByCategory,
+        topDestinations,
+        tripsByMonth,
+        trips
+      ] = await Promise.all([
+        analyticsService.getDashboardSummary(),
+        analyticsService.getExpensesByCategory(),
+        analyticsService.getTopDestinations(),
+        analyticsService.getTripsByMonth(),
+        tripService.getTrips()
+      ]);
 
-      let upcoming = 0;
-      let totalBudgetCalc = 0;
-
-      trips.forEach(trip => {
-        totalBudgetCalc += (trip.budget || 0);
-        const startDate = new Date(trip.startDate);
-        startDate.setHours(0, 0, 0, 0);
-        if (startDate > today) {
-          upcoming++;
-        }
+      setStats(summary);
+      setAnalytics({
+        expensesByCategory,
+        topDestinations,
+        tripsByMonth
       });
 
-      // 1. Immediately set base stats and UNBLOCK the UI
-      setStats(prev => ({
-        ...prev,
-        totalTrips: trips.length,
-        upcomingTrips: upcoming,
-        totalBudget: totalBudgetCalc,
-      }));
-
-      // Find recents by sorting descending
+      // 2. Process Trip Highlights (Client-side fast sort for display)
       const sortedTrips = [...trips].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
       
-      setTripHighlights(sortedTrips.slice(0, 3));
-      setRecentActivity(prev => ({ ...prev, trip: sortedTrips[0] || null }));
+      // We map the trips to include an estimated 'totalExpenses' if we don't want to query all of them again.
+      // Since we removed manual calculation, we'll fetch only for the top 3 highlights to keep it fast
+      const topTrips = sortedTrips.slice(0, 3);
       
-      setIsLoading(false); // Unblock screen render!
+      const tripsWithExpenses = await Promise.all(
+        topTrips.map(async (trip) => {
+          try {
+            const exps = await expenseService.getExpensesByTrip(trip._id);
+            const tripExpenses = exps.reduce((sum, e) => sum + (e.amount || 0), 0);
+            return { ...trip, totalExpenses: tripExpenses };
+          } catch {
+            return { ...trip, totalExpenses: 0 };
+          }
+        })
+      );
+      
+      setTripHighlights(tripsWithExpenses);
 
-      // 2. Fetch heavy data asynchronously in the background
-      fetchHeavyStats(trips, totalBudgetCalc, sortedTrips);
-
+      // 3. Fetch Recent Activity asynchronously in background so we don't block the UI
+      fetchRecentActivity(sortedTrips);
+      
+      setIsLoading(false);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
       setError('Could not load dashboard statistics. Please try refreshing.');
       setIsLoading(false);
-      setIsStatsLoading(false);
     }
   };
 
-  const fetchHeavyStats = async (trips, totalBudgetCalc, sortedTrips) => {
+  const fetchRecentActivity = async (sortedTrips) => {
     try {
-      const expensePromises = trips.map(trip => expenseService.getExpensesByTrip(trip._id));
-      const memoryPromises = trips.map(trip => memoryService.getMemoriesByTrip(trip._id));
-      const activityPromises = trips.map(trip => activityService.getActivitiesByTrip(trip._id));
+      // For recent activity we just need the latest 1 item across collections.
+      // Since backend doesn't have a "get recent" yet, we'll gracefully fallback 
+      // or fetch the latest if possible. For simplicity we'll just check the first trip's items.
+      if (sortedTrips.length > 0) {
+        const latestTrip = sortedTrips[0];
+        
+        const [exps, mems, acts] = await Promise.allSettled([
+          expenseService.getExpensesByTrip(latestTrip._id),
+          memoryService.getMemoriesByTrip(latestTrip._id),
+          activityService.getActivitiesByTrip(latestTrip._id)
+        ]);
 
-      const expenseResults = await Promise.allSettled(expensePromises);
-      const memoryResults = await Promise.allSettled(memoryPromises);
-      const activityResults = await Promise.allSettled(activityPromises);
-
-      let allExpenses = [];
-      let totalExpensesCalc = 0;
-
-      // Associate expenses with trips for highlights
-      const tripsWithExpenses = trips.map((trip, index) => {
-        let tripExpenses = 0;
-        if (expenseResults[index].status === 'fulfilled') {
-          const exps = expenseResults[index].value;
-          allExpenses.push(...exps);
-          tripExpenses = exps.reduce((sum, e) => sum + (e.amount || 0), 0);
+        let recentExp = null;
+        if (exps.status === 'fulfilled' && exps.value.length > 0) {
+           exps.value.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+           recentExp = exps.value[0];
         }
-        totalExpensesCalc += tripExpenses;
-        return { ...trip, totalExpenses: tripExpenses };
-      });
 
-      let allMemories = [];
-      memoryResults.forEach(res => {
-        if (res.status === 'fulfilled') allMemories.push(...res.value);
-      });
+        let recentMem = null;
+        if (mems.status === 'fulfilled' && mems.value.length > 0) {
+           mems.value.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+           recentMem = mems.value[0];
+        }
 
-      let allActivities = [];
-      activityResults.forEach(res => {
-        if (res.status === 'fulfilled') allActivities.push(...res.value);
-      });
+        let recentAct = null;
+        if (acts.status === 'fulfilled' && acts.value.length > 0) {
+           acts.value.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+           recentAct = acts.value[0];
+        }
 
-      setStats(prev => ({
-        ...prev,
-        totalExpenses: totalExpensesCalc,
-        remainingBudget: totalBudgetCalc - totalExpensesCalc
-      }));
-
-      // Sort for highlights (recent first)
-      const finalHighlights = [...tripsWithExpenses].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      setTripHighlights(finalHighlights.slice(0, 3));
-
-      allExpenses.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-      allMemories.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-      allActivities.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-      setRecentActivity({
-        trip: sortedTrips[0] || null,
-        expense: allExpenses[0] || null,
-        memory: allMemories[0] || null,
-        activity: allActivities[0] || null
-      });
-
+        setRecentActivity({
+          trip: latestTrip,
+          expense: recentExp,
+          memory: recentMem,
+          activity: recentAct
+        });
+      }
     } catch (err) {
-      console.error('Background fetch failed:', err);
-    } finally {
-      setIsStatsLoading(false);
+      console.error('Recent activity fetch failed:', err);
     }
   };
 
@@ -186,7 +181,57 @@ function Dashboard() {
     }).format(value || 0);
   };
 
+  // Generate dynamic insights
+  const generateInsights = () => {
+    const insights = [];
+    if (analytics.expensesByCategory.length > 0) {
+      insights.push(`Your highest spending category is ${analytics.expensesByCategory[0].name}, totaling ${formatCurrency(analytics.expensesByCategory[0].value)}.`);
+    }
+    if (analytics.topDestinations.length > 0) {
+      insights.push(`You have visited ${analytics.topDestinations[0].destination} the most (${analytics.topDestinations[0].count} times).`);
+    }
+    if (analytics.tripsByMonth.length > 0) {
+      const highestMonth = [...analytics.tripsByMonth].sort((a,b) => b.trips - a.trips)[0];
+      insights.push(`Your busiest travel period was ${highestMonth.name} with ${highestMonth.trips} trips.`);
+    }
+    return insights;
+  };
+
+  // Generate dynamic recommendations
+  const generateRecommendations = () => {
+    const recs = [];
+    if (stats.remainingBudget < 0) {
+      recs.push("You have exceeded your total budget. Consider setting stricter limits on daily expenses for upcoming trips.");
+    } else if (stats.remainingBudget > 0) {
+      recs.push(`You have ${formatCurrency(stats.remainingBudget)} remaining in your total budget! Time to plan your next adventure?`);
+    }
+    
+    if (stats.totalMemories < stats.totalTrips) {
+      recs.push("You haven't logged memories for all your trips. Make sure to capture those moments!");
+    } else {
+      recs.push("Great job preserving your travels! Keep uploading photos to your memories.");
+    }
+    return recs;
+  };
+
+  const insightsList = generateInsights();
+  const recommendationsList = generateRecommendations();
   const hasAnyActivity = recentActivity.trip || recentActivity.expense || recentActivity.memory || recentActivity.activity;
+
+  // Custom Recharts Tooltip
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '10px', borderRadius: '8px' }}>
+          <p style={{ margin: 0, color: '#f8fafc', fontWeight: '600' }}>{payload[0].name || label}</p>
+          <p style={{ margin: 0, color: payload[0].payload.fill || '#14b8a6' }}>
+            {payload[0].name ? formatCurrency(payload[0].value) : `${payload[0].value} Trips`}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
 
   if (isLoading) {
     return (
@@ -208,7 +253,7 @@ function Dashboard() {
       
       <main className="dashboard-main">
         
-        {/* HERO SECTION WITH COMPACT STATS */}
+        {/* HERO SECTION WITH AGGREGATED STATS */}
         <div className="dashboard-hero glass-panel">
           <div className="hero-content">
             <h1 className="hero-title">
@@ -243,8 +288,8 @@ function Dashboard() {
 
         <div className="dashboard-content-grid">
           
-          {/* TRIP HIGHLIGHTS - PRIMARY FOCUS */}
           <div className="dashboard-main-column">
+            {/* TRIP HIGHLIGHTS */}
             <section className="dash-section">
               <div className="dash-section-header">
                 <h2 className="dash-section-title">Trip Highlights</h2>
@@ -310,29 +355,73 @@ function Dashboard() {
               )}
             </section>
 
-            {/* TRAVEL INSPIRATION */}
-            {randomQuote && (
-              <section className="dash-quote-card" style={{ marginTop: '2rem' }}>
-                <div className="dash-quote-bg-icon">
-                  <Quote size={180} />
-                </div>
-                <div className="dash-quote-content">
-                  <div className="dash-quote-header">
-                    <Quote size={20} className="quote-accent" />
-                    <span>Travel Inspiration</span>
+            {/* TRAVEL ANALYTICS CHARTS */}
+            {stats.totalTrips > 0 && (
+              <section className="dash-section">
+                <h2 className="dash-section-title">Travel Analytics</h2>
+                <div className="analytics-charts-grid">
+                  
+                  {/* EXPENSES BY CATEGORY CHART */}
+                  <div className="chart-card glass-panel">
+                    <div className="chart-header">
+                      <PieChartIcon size={20} className="chart-icon text-gradient" />
+                      <h3>Expenses by Category</h3>
+                    </div>
+                    {analytics.expensesByCategory.length > 0 ? (
+                      <div className="chart-container">
+                        <ResponsiveContainer width="100%" height={250}>
+                          <PieChart>
+                            <Pie
+                              data={analytics.expensesByCategory}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              {analytics.expensesByCategory.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend verticalAlign="bottom" height={36}/>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="chart-empty">No expense data available</div>
+                    )}
                   </div>
-                  <blockquote>"{randomQuote.text}"</blockquote>
-                  <div className="dash-quote-author">
-                    <div className="author-line"></div>
-                    <cite>{randomQuote.author}</cite>
+
+                  {/* TRIPS BY MONTH CHART */}
+                  <div className="chart-card glass-panel">
+                    <div className="chart-header">
+                      <BarChart2 size={20} className="chart-icon text-gradient" />
+                      <h3>Trips over Time</h3>
+                    </div>
+                    {analytics.tripsByMonth.length > 0 ? (
+                      <div className="chart-container">
+                        <ResponsiveContainer width="100%" height={250}>
+                          <BarChart data={analytics.tripsByMonth}>
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} />
+                            <YAxis stroke="#94a3b8" fontSize={12} allowDecimals={false} />
+                            <Tooltip content={<CustomTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
+                            <Bar dataKey="trips" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="chart-empty">No trip history available</div>
+                    )}
                   </div>
+
                 </div>
               </section>
             )}
 
           </div>
 
-          {/* SIDEBAR COLUMN: RECENT ACTIVITY & QUICK ACTIONS */}
           <div className="dashboard-side-column">
             
             {/* QUICK ACTIONS */}
@@ -349,6 +438,40 @@ function Dashboard() {
                 </button>
               </div>
             </section>
+
+            {/* AI TRAVEL INSIGHTS */}
+            {insightsList.length > 0 && (
+              <section className="dash-section">
+                <h2 className="dash-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <TrendingUp size={20} className="text-gradient" /> Travel Insights
+                </h2>
+                <div className="insights-container glass-panel">
+                  {insightsList.map((insight, idx) => (
+                    <div key={idx} className="insight-item">
+                      <Lightbulb size={16} className="insight-icon" />
+                      <p>{insight}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* RECOMMENDATIONS */}
+            {stats.totalTrips > 0 && (
+              <section className="dash-section">
+                <h2 className="dash-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Compass size={20} className="text-gradient" /> Recommendations
+                </h2>
+                <div className="recommendations-container glass-panel">
+                  {recommendationsList.map((rec, idx) => (
+                    <div key={idx} className="recommendation-item">
+                      <div className="rec-bullet"></div>
+                      <p>{rec}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {/* RECENT ACTIVITY */}
             <section className="dash-section">
@@ -384,7 +507,7 @@ function Dashboard() {
                     <div className="dash-activity-item glass-panel">
                       <div className="dash-act-icon" style={{ color: '#a855f7' }}><ImageIcon size={18} /></div>
                       <div className="dash-act-details">
-                        <h5>Memory in {recentActivity.memory.location}</h5>
+                        <h5>Memory in {recentActivity.memory.location || 'Trip'}</h5>
                         <span>{formatDate(recentActivity.memory.createdAt)}</span>
                       </div>
                     </div>

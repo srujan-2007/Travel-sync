@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Memory = require('../models/Memory');
 
 const createMemory = async (req, res, next) => {
@@ -49,4 +50,47 @@ const deleteMemory = async (req, res, next) => {
     }
 };
 
-module.exports = { createMemory, getMemoriesByTrip, updateMemory, deleteMemory };
+const searchMemories = async (req, res, next) => {
+    try {
+        const { tripId, q } = req.query;
+        if (!tripId || !q) {
+            return res.json([]);
+        }
+        const items = await Memory.find({
+            userId: req.user.id,
+            tripId: tripId,
+            $or: [
+                { caption: { $regex: q, $options: 'i' } },
+                { travelNote: { $regex: q, $options: 'i' } }
+            ]
+        });
+        res.json(items);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const getMemoryTimeline = async (req, res, next) => {
+    try {
+        const userId = new mongoose.Types.ObjectId(req.user.id);
+        const tripId = new mongoose.Types.ObjectId(req.params.tripId);
+        
+        const timeline = await Memory.aggregate([
+            { $match: { tripId, userId } },
+            { $sort: { date: 1 } },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+                    memories: { $push: "$$ROOT" }
+                }
+            },
+            { $sort: { "_id": 1 } }
+        ]);
+        
+        res.json(timeline);
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { createMemory, getMemoriesByTrip, updateMemory, deleteMemory, searchMemories, getMemoryTimeline };

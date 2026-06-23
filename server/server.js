@@ -23,6 +23,8 @@ app.use('/api/expenses', require('./routes/expenseRoutes'));
 app.use('/api/memories', require('./routes/memoryRoutes'));
 app.use('/api/locations', require('./routes/locationRoutes'));
 app.use('/api/upload', require('./routes/uploadRoutes'));
+app.use('/api/analytics', require('./routes/analyticsRoutes'));
+app.use('/api/ai', require('./routes/aiRoutes')); // Add the new AI route
 
 // Serve static files from the uploads directory
 const path = require('path');

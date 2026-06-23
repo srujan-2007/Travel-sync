@@ -6,6 +6,11 @@ const locationService = {
     return response.data;
   },
 
+  searchLocations: async (tripId, query) => {
+    const response = await api.get(`/locations/search?tripId=${tripId}&q=${query}`);
+    return response.data;
+  },
+
   createLocation: async (locationData) => {
     const response = await api.post('/locations', locationData);
     return response.data;

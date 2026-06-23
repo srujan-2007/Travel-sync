@@ -32,10 +32,52 @@ const createTrip = async (req, res, next) => {
     }
 };
 
-// Get all trips for the logged-in user
+// Get all trips for the logged-in user (with optional filters)
 const getTrips = async (req, res, next) => {
     try {
-        const trips = await Trip.find({ userId: req.user.id });
+        const { q, status, budget, destination } = req.query;
+        let query = { userId: req.user.id };
+
+        // Handle Global Search (q)
+        if (q) {
+            query.$or = [
+                { tripName: { $regex: q, $options: 'i' } },
+                { destination: { $regex: q, $options: 'i' } }
+            ];
+        }
+
+        // Handle Destination Filter
+        if (destination) {
+            // If search is also providing destination, this will just add a strict destination filter
+            // which MongoDB handles by ANDing implicit object keys.
+            query.destination = { $regex: destination, $options: 'i' };
+        }
+
+        // Handle Status Filter
+        if (status) {
+            const currentDate = new Date();
+            if (status === 'Upcoming') {
+                query.startDate = { $gt: currentDate };
+            } else if (status === 'Ongoing') {
+                query.startDate = { $lte: currentDate };
+                query.endDate = { $gte: currentDate };
+            } else if (status === 'Completed') {
+                query.endDate = { $lt: currentDate };
+            }
+        }
+
+        // Handle Budget Filter
+        if (budget) {
+            if (budget === 'Under $10,000') {
+                query.budget = { $lt: 10000 };
+            } else if (budget === '$10,000 - $50,000') {
+                query.budget = { $gte: 10000, $lte: 50000 };
+            } else if (budget === 'Above $50,000') {
+                query.budget = { $gt: 50000 };
+            }
+        }
+
+        const trips = await Trip.find(query);
         res.json(trips);
     } catch (error) {
         next(error);
@@ -109,4 +151,23 @@ const deleteTrip = async (req, res, next) => {
     }
 };
 
-module.exports = { createTrip, getTrips, getTripById, updateTrip, deleteTrip };
+const searchTrips = async (req, res, next) => {
+    try {
+        const { q } = req.query;
+        if (!q) {
+            return res.json([]);
+        }
+        const trips = await Trip.find({
+            userId: req.user.id,
+            $or: [
+                { tripName: { $regex: q, $options: 'i' } },
+                { destination: { $regex: q, $options: 'i' } }
+            ]
+        });
+        res.json(trips);
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { createTrip, getTrips, getTripById, updateTrip, deleteTrip, searchTrips };

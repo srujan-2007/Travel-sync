@@ -11,6 +11,8 @@ import MemoryModal from '../../components/MemoryModal/MemoryModal';
 import ActivityModal from '../../components/ActivityModal/ActivityModal';
 import LocationModal from '../../components/LocationModal/LocationModal';
 import ItineraryModal from '../../components/ItineraryModal/ItineraryModal';
+import SearchBar from '../../components/SearchBar/SearchBar';
+import TravelTimeline from '../../components/TravelTimeline/TravelTimeline';
 
 // Services
 import tripService from '../../services/tripService';
@@ -33,11 +35,17 @@ function TripDetails() {
   const [activities, setActivities] = useState([]);
   const [locations, setLocations] = useState([]);
   const [itineraries, setItineraries] = useState([]);
+  const [timelineData, setTimelineData] = useState([]);
 
   // UI States
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Search States
+  const [memorySearch, setMemorySearch] = useState('');
+  const [activitySearch, setActivitySearch] = useState('');
+  const [locationSearch, setLocationSearch] = useState('');
 
   // Modal States
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -91,14 +99,16 @@ function TripDetails() {
         memoriesData, 
         activitiesData, 
         locationsData, 
-        itinerariesData
+        itinerariesData,
+        timelineDataResult
       ] = await Promise.all([
         tripService.getTripById(id),
         expenseService.getExpensesByTrip(id).catch(() => []),
         memoryService.getMemoriesByTrip(id).catch(() => []),
         activityService.getActivitiesByTrip(id).catch(() => []),
         locationService.getLocationsByTrip(id).catch(() => []),
-        itineraryService.getItinerariesByTrip(id).catch(() => [])
+        itineraryService.getItinerariesByTrip(id).catch(() => []),
+        memoryService.getMemoryTimeline(id).catch(() => [])
       ]);
 
       setTrip(tripData);
@@ -107,6 +117,7 @@ function TripDetails() {
       setActivities(activitiesData || []);
       setLocations(locationsData || []);
       setItineraries(itinerariesData || []);
+      setTimelineData(timelineDataResult || []);
     } catch (err) {
       console.error('Failed to fetch trip details:', err);
       if (err.response && err.response.status === 404) {
@@ -118,6 +129,49 @@ function TripDetails() {
       setIsLoading(false);
     }
   };
+
+  // Search Effects
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (!id) return;
+      if (memorySearch.trim() === '') {
+        const data = await memoryService.getMemoriesByTrip(id).catch(() => []);
+        setMemories(data);
+      } else {
+        const data = await memoryService.searchMemories(id, memorySearch).catch(() => []);
+        setMemories(data);
+      }
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [memorySearch, id]);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (!id) return;
+      if (activitySearch.trim() === '') {
+        const data = await activityService.getActivitiesByTrip(id).catch(() => []);
+        setActivities(data);
+      } else {
+        const data = await activityService.searchActivities(id, activitySearch).catch(() => []);
+        setActivities(data);
+      }
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [activitySearch, id]);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (!id) return;
+      if (locationSearch.trim() === '') {
+        const data = await locationService.getLocationsByTrip(id).catch(() => []);
+        setLocations(data);
+      } else {
+        const data = await locationService.searchLocations(id, locationSearch).catch(() => []);
+        setLocations(data);
+      }
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [locationSearch, id]);
 
   // Expense Handlers
   const handleAddExpense = () => {
@@ -161,6 +215,10 @@ function TripDetails() {
     // Refresh memories
     const updatedMemories = await memoryService.getMemoriesByTrip(id);
     setMemories(updatedMemories);
+    
+    // Refresh timeline data
+    const updatedTimeline = await memoryService.getMemoryTimeline(id).catch(() => []);
+    setTimelineData(updatedTimeline);
   };
 
   // Activity Handlers
@@ -252,6 +310,9 @@ function TripDetails() {
       } else if (deleteType === 'memory') {
         await memoryService.deleteMemory(itemToDelete._id);
         setMemories(memories.filter(m => m._id !== itemToDelete._id));
+        // Refresh timeline data
+        const updatedTimeline = await memoryService.getMemoryTimeline(id).catch(() => []);
+        setTimelineData(updatedTimeline);
       } else if (deleteType === 'activity') {
         await activityService.deleteActivity(itemToDelete._id);
         setActivities(activities.filter(a => a._id !== itemToDelete._id));
@@ -425,11 +486,17 @@ function TripDetails() {
       return (
         <div className="tab-empty-state">
           <ImageIcon size={48} />
-          <h3>No Memories Yet</h3>
-          <p>Upload photos and notes to remember your journey.</p>
-          <div className="action-btn-sm" onClick={handleAddMemory}>
-            <Plus size={16} /> Upload Memory
-          </div>
+          {memorySearch ? (
+            <h3>No matching results found.</h3>
+          ) : (
+            <>
+              <h3>No Memories Yet</h3>
+              <p>Upload photos and notes to remember your journey.</p>
+              <div className="action-btn-sm" onClick={handleAddMemory}>
+                <Plus size={16} /> Upload Memory
+              </div>
+            </>
+          )}
         </div>
       );
     }
@@ -438,8 +505,15 @@ function TripDetails() {
       <div>
         <div className="tab-section-header">
           <h2 className="tab-section-title">Memories</h2>
-          <div className="action-btn-sm" onClick={handleAddMemory}>
-            <Plus size={16} /> Upload New
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <SearchBar 
+              value={memorySearch} 
+              onChange={setMemorySearch} 
+              placeholder="Search memories..." 
+            />
+            <div className="action-btn-sm" onClick={handleAddMemory}>
+              <Plus size={16} /> Upload New
+            </div>
           </div>
         </div>
         <div className="memories-grid">
@@ -475,11 +549,17 @@ function TripDetails() {
       return (
         <div className="tab-empty-state">
           <Clock size={48} />
-          <h3>No Activities Yet</h3>
-          <p>Plan your days by adding activities to your timeline.</p>
-          <div className="action-btn-sm" onClick={handleAddActivity}>
-            <Plus size={16} /> Add Activity
-          </div>
+          {activitySearch ? (
+            <h3>No matching results found.</h3>
+          ) : (
+            <>
+              <h3>No Activities Yet</h3>
+              <p>Plan your days by adding activities to your timeline.</p>
+              <div className="action-btn-sm" onClick={handleAddActivity}>
+                <Plus size={16} /> Add Activity
+              </div>
+            </>
+          )}
         </div>
       );
     }
@@ -495,8 +575,15 @@ function TripDetails() {
       <div>
         <div className="tab-section-header">
           <h2 className="tab-section-title">Activity Timeline</h2>
-          <div className="action-btn-sm" onClick={handleAddActivity}>
-            <Plus size={16} /> Add New
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <SearchBar 
+              value={activitySearch} 
+              onChange={setActivitySearch} 
+              placeholder="Search activities..." 
+            />
+            <div className="action-btn-sm" onClick={handleAddActivity}>
+              <Plus size={16} /> Add New
+            </div>
           </div>
         </div>
         <div className="trip-timeline">
@@ -529,11 +616,17 @@ function TripDetails() {
       return (
         <div className="tab-empty-state">
           <Map size={48} />
-          <h3>No Locations Yet</h3>
-          <p>Track the places you visit during your trip.</p>
-          <div className="action-btn-sm" onClick={handleAddLocation}>
-            <Plus size={16} /> Add Location
-          </div>
+          {locationSearch ? (
+            <h3>No matching results found.</h3>
+          ) : (
+            <>
+              <h3>No Locations Yet</h3>
+              <p>Track the places you visit during your trip.</p>
+              <div className="action-btn-sm" onClick={handleAddLocation}>
+                <Plus size={16} /> Add Location
+              </div>
+            </>
+          )}
         </div>
       );
     }
@@ -549,8 +642,15 @@ function TripDetails() {
       <div>
         <div className="tab-section-header">
           <h2 className="tab-section-title">Visited Locations</h2>
-          <div className="action-btn-sm" onClick={handleAddLocation}>
-            <Plus size={16} /> Add New
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <SearchBar 
+              value={locationSearch} 
+              onChange={setLocationSearch} 
+              placeholder="Search locations..." 
+            />
+            <div className="action-btn-sm" onClick={handleAddLocation}>
+              <Plus size={16} /> Add New
+            </div>
           </div>
         </div>
         <div className="locations-list">
@@ -740,7 +840,8 @@ function TripDetails() {
             { id: 'memories', label: 'Memories' },
             { id: 'activities', label: 'Activities' },
             { id: 'locations', label: 'Locations' },
-            { id: 'itinerary', label: 'Itinerary' }
+            { id: 'itinerary', label: 'Itinerary' },
+            { id: 'timeline', label: 'Story Timeline' }
           ].map(tab => (
             <button 
               key={tab.id}
@@ -760,6 +861,7 @@ function TripDetails() {
           {activeTab === 'activities' && renderActivitiesTab()}
           {activeTab === 'locations' && renderLocationsTab()}
           {activeTab === 'itinerary' && renderItineraryTab()}
+          {activeTab === 'timeline' && <TravelTimeline timelineData={timelineData} />}
         </div>
 
       </main>

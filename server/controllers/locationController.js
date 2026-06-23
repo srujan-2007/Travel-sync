@@ -49,4 +49,21 @@ const deleteLocation = async (req, res, next) => {
     }
 };
 
-module.exports = { createLocation, getLocationsByTrip, updateLocation, deleteLocation };
+const searchLocations = async (req, res, next) => {
+    try {
+        const { tripId, q } = req.query;
+        if (!tripId || !q) {
+            return res.json([]);
+        }
+        const items = await Location.find({
+            userId: req.user.id,
+            tripId: tripId,
+            placeName: { $regex: q, $options: 'i' }
+        });
+        res.json(items);
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { createLocation, getLocationsByTrip, updateLocation, deleteLocation, searchLocations };
