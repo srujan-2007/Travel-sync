@@ -5,8 +5,8 @@ const PendingAction = require('../models/PendingAction');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const fieldsOrder = [
-    { key: 'destination', question: 'What is the destination?' },
     { key: 'tripName', question: 'What should be the trip name?' },
+    { key: 'destination', question: 'What is the destination?' },
     { key: 'startingPoint', question: 'What is the starting point?' },
     { key: 'startDate', question: 'What is the start date? (YYYY-MM-DD)' },
     { key: 'endDate', question: 'What is the end date? (YYYY-MM-DD)' },
@@ -18,27 +18,143 @@ const fieldsOrder = [
 const formatDest = (dest) => dest.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
 async function classifyIntent(prompt, hasPendingWorkflow) {
-    const systemPrompt = `You are an Intent Classifier. Currently, hasPendingWorkflow = ${hasPendingWorkflow}.
-Classify the user's input into EXACTLY ONE of these categories:
-- GREETING (hi, hello, good morning)
-- CREATE_TRIP (create a trip, add trip)
-- READ_TRIPS (show my trips, list my trips, show my saved trips, show my travel history, can you show my travel history, what trips do I have, what trips have I planned, where am I travelling, where have I travelled, what destinations do I have saved, show my vacations, list my vacations, show my journeys, what is my travel history, what places am I visiting, what trips are in my account)
-- UPDATE_TRIP (change budget, update trip)
-- DELETE_TRIP (delete trip, remove trip)
-- CANCEL_WORKFLOW (cancel, stop, abort)
-- TRAVEL_QUESTION (tell me about goa, best time to visit)
-- GENERAL_CHAT (thank you, awesome, tell me a joke)
-- START_NEW_WORKFLOW (If hasPendingWorkflow is true and the user explicitly uses words like 'create', 'add', or 'plan' to start a completely new operation)
-- CONTINUE_WORKFLOW (The user is answering a form question. CRITICAL: If hasPendingWorkflow is true, ANY short phrase, name, location, or number (e.g., "Goa Beach Escape", "Hyderabad", "15000") that does NOT contain command verbs like "create", "update", "delete", "remove", "show", or "list" MUST be classified as CONTINUE_WORKFLOW)
-- UNKNOWN
+    const systemPrompt = `
+You are an Intent Classifier for a Travel Management AI system.
 
-You MUST output ONLY a JSON object: { "intent": "INTENT_NAME" }. No explanations.
-Input: "${prompt}"`;
+Your job is ONLY to classify user input into ONE intent.
+You MUST be extremely stable, conservative, and avoid misclassification.
+
+CURRENT STATE:
+hasPendingWorkflow = ${hasPendingWorkflow}
+
+========================
+INTENT CATEGORIES
+========================
+
+1. GREETING
+User is greeting or casual opening.
+Examples: hi, hello, hey, good morning, how are you
+
+2. CREATE_TRIP
+User explicitly wants to create or start planning a trip.
+Examples: create trip, plan a trip, add trip
+
+3. READ_TRIPS
+User wants to view or analyze trips.
+Examples:
+show my trips, list my trips, travel history, what trips do I have,
+what are my trips, show my vacations, show my journeys
+
+4. UPDATE_TRIP
+User explicitly wants to modify a trip.
+Examples: update trip, change budget, modify trip, edit trip
+
+5. DELETE_TRIP
+User explicitly wants to delete a trip.
+Examples: delete trip, remove trip
+
+6. CANCEL_WORKFLOW
+User explicitly wants to stop or cancel current operation.
+Examples: cancel, stop, abort, exit, quit, never mind
+
+7. RESTART_WORKFLOW
+User wants to restart the current workflow from the beginning.
+Examples: restart, start over, begin again
+
+8. HELP
+User is asking for help or a list of capabilities.
+Examples: help, what can you do, features
+
+9. TRAVEL_QUESTION
+General travel knowledge questions.
+Examples: best places in goa, when to visit japan, information about paris
+
+10. GENERAL_CHAT
+Non-task conversational messages.
+Examples: tell me a joke, thank you, ok, nice, cool
+
+11. START_NEW_WORKFLOW
+ONLY when:
+- hasPendingWorkflow = true
+AND
+- user clearly tries to start a NEW operation using verbs like create/add/plan/update/delete
+AND
+- it is NOT part of answering a form step
+
+12. CONTINUE_WORKFLOW (VERY IMPORTANT RULE)
+This is the MOST IMPORTANT CLASS.
+
+If hasPendingWorkflow = true, classify as CONTINUE_WORKFLOW when:
+
+- The user input is a NORMAL field value for a form step
+Examples:
+  "Goa Beach Escape"
+  "Hyderabad"
+  "15000"
+  "2026-10-10"
+  "2"
+
+CRITICAL RULES:
+- NEVER treat normal names, cities, numbers, or dates as commands
+- NEVER look for meaning in these values
+- DO NOT classify them as GREETING, TRAVEL_QUESTION, or GENERAL_CHAT
+- DO NOT assume intent from meaning when workflow is active
+
+ONLY classify as CONTINUE_WORKFLOW when:
+- It is answering a question in a workflow
+- AND it does NOT contain command words like:
+  create, update, delete, remove, show, list, cancel, abort, stop, restart, help
+
+13. UNKNOWN
+Only when input cannot be understood at all
+
+========================
+HARD RULES
+========================
+
+- Output ONLY valid JSON:
+  { "intent": "INTENT_NAME" }
+
+- NO explanations
+- NO extra text
+- NO reasoning output
+- NEVER overthink user input during workflows
+- NEVER block valid field inputs
+- NEVER treat normal text as commands inside workflow
+
+========================
+EXAMPLES (VERY IMPORTANT)
+========================
+
+User: "explore hyderabad"
+→ CONTINUE_WORKFLOW (if workflow active)
+
+User: "Goa Beach Escape"
+→ CONTINUE_WORKFLOW
+
+User: "15000"
+→ CONTINUE_WORKFLOW
+
+User: "hi"
+→ GREETING
+
+User: "tell me a joke"
+→ GENERAL_CHAT
+
+User: "create trip"
+→ CREATE_TRIP
+
+User: "what is best time to visit goa"
+→ TRAVEL_QUESTION
+`;
 
     try {
         const res = await groq.chat.completions.create({
-            messages: [{ role: 'system', content: systemPrompt }],
-            model: 'llama-3.3-70b-versatile',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: prompt }
+            ],
+            model: 'llama-3.1-8b-instant',
             temperature: 0,
             response_format: { type: 'json_object' }
         });
@@ -51,7 +167,7 @@ Input: "${prompt}"`;
             console.error("Initiating deterministic fallback rules...");
             console.error("===================================\n");
         }
-        
+
         // Deterministic Fallback Rules for API Outages
         const p = prompt.toLowerCase();
         const readTripsRegexes = [
@@ -71,17 +187,17 @@ Input: "${prompt}"`;
         if (/\b(?:update|change|modify|edit)\b/i.test(p)) return 'UPDATE_TRIP';
         if (/\b(?:delete|remove)\b/i.test(p)) return 'DELETE_TRIP';
         if (readTripsRegexes.some(r => r.test(p))) return 'READ_TRIPS';
-        
+
         const isChatOrQuestion = /\b(?:hi|hello|hey|joke|weather|how are you|what can you do|thank you|thanks|help|tell me|who are you|capital)\b/i.test(p) || /\?$/.test(p.trim());
         if (isChatOrQuestion) {
             return 'GENERAL_CHAT';
         }
-        
+
         if (hasPendingWorkflow) {
             const isCommand = /\b(?:create|plan|update|change|modify|delete|remove|show|list)\b/i.test(p);
             if (!isCommand) return 'CONTINUE_WORKFLOW';
         }
-        
+
         return 'UNKNOWN';
     }
 }
@@ -93,10 +209,10 @@ const generateChatResponse = async (req, res, next) => {
 
         const userId = req.user.id;
         let pendingAction = await PendingAction.findOne({ userId });
-        
+
         // Treat CONTEXT as not pending a CRUD workflow, so it doesn't block new ones
         const hasPendingCRUD = pendingAction && pendingAction.action !== 'CONTEXT';
-        
+
         const simulateOutage = req.headers['x-simulate-outage'] === 'true';
         let intent;
         if (simulateOutage) {
@@ -113,13 +229,15 @@ const generateChatResponse = async (req, res, next) => {
                 /\bwhere (?:am i|have i)\b/i
             ];
 
-            if (/\b(cancel|abort|stop)\b/i.test(p)) intent = 'CANCEL_WORKFLOW';
+            if (/\b(cancel|abort|stop|exit|quit|never mind)\b/i.test(p)) intent = 'CANCEL_WORKFLOW';
+            else if (/\b(restart|start over|begin again)\b/i.test(p)) intent = 'RESTART_WORKFLOW';
+            else if (/\b(help|what can you do|features)\b/i.test(p)) intent = 'HELP';
             else if (/\b(?:create|plan|add|new)\b/i.test(p)) intent = 'CREATE_TRIP';
             else if (/\b(?:update|change|modify|edit)\b/i.test(p)) intent = 'UPDATE_TRIP';
             else if (/\b(?:delete|remove)\b/i.test(p)) intent = 'DELETE_TRIP';
             else if (readTripsRegexes.some(r => r.test(p))) intent = 'READ_TRIPS';
             else {
-                const isChatOrQuestion = /\b(?:hi|hello|hey|joke|weather|how are you|what can you do|thank you|thanks|help|tell me|who are you|capital)\b/i.test(p) || /\?$/.test(p.trim());
+                const isChatOrQuestion = /\b(?:hi|hello|hey|joke|weather|how are you|thank you|thanks|tell me|who are you|capital)\b/i.test(p) || /\?$/.test(p.trim());
                 if (isChatOrQuestion) intent = 'GENERAL_CHAT';
                 else if (hasPendingCRUD) {
                     const isCommand = /\b(?:create|plan|update|change|modify|delete|remove|show|list)\b/i.test(p);
@@ -132,7 +250,7 @@ const generateChatResponse = async (req, res, next) => {
         } else {
             intent = await classifyIntent(prompt, hasPendingCRUD);
         }
-        
+
         console.log(`\n=== INTENT ROUTER DEBUG ===`);
         console.log(`Original Prompt: "${prompt}"`);
         console.log(`Detected Intent: ${intent}`);
@@ -143,20 +261,100 @@ const generateChatResponse = async (req, res, next) => {
         if (intent === 'CANCEL_WORKFLOW') {
             if (pendingAction) {
                 await PendingAction.deleteMany({ userId });
-                return res.status(200).json({ response: "Action cancelled. How else can I help you?" });
+                return res.status(200).json({ response: "Current operation cancelled.\n\nHow else can I help you?" });
             } else {
                 return res.status(200).json({ response: "There is no active action to cancel." });
             }
         }
 
+        // 1.5 RESTART WORKFLOW
+        if (intent === 'RESTART_WORKFLOW') {
+            if (pendingAction) {
+                if (pendingAction.action === 'CREATE') {
+                    await PendingAction.findByIdAndUpdate(pendingAction._id, { data: {}, step: 'COLLECTING' });
+                    return res.status(200).json({ response: "Let's start again.\n\n" + fieldsOrder[0].question });
+                } else if (pendingAction.action === 'UPDATE' || pendingAction.action === 'DELETE') {
+                    const trips = await Trip.find({ userId });
+                    await PendingAction.findByIdAndUpdate(pendingAction._id, { data: { trips }, step: 'SELECTING' });
+                    let responseText = `Let's start again.\n\nHere are your trips:\n`;
+                    trips.forEach((t, i) => { responseText += `${i + 1}. **${t.tripName}** (${formatDest(t.destination)})\n`; });
+                    responseText += `\nWhich one would you like to ${pendingAction.action.toLowerCase()}? (Reply with number)`;
+                    return res.status(200).json({ response: responseText });
+                }
+            } else {
+                return res.status(200).json({ response: "There is no active action to restart." });
+            }
+        }
+
+        let appendReminder = false;
+        let reminderText = "";
+
+        // 1.6 HELP COMMAND
+        if (intent === 'HELP') {
+            const helpText = "I can help you with:\n\n- Trip Creation\n- Trip Updates\n- Trip Deletion\n- Expenses\n- Memories\n- Activities\n- Locations\n- Itineraries\n- Travel Recommendations\n- Travel Questions\n\nHow can I help you today?";
+            
+            if (hasPendingCRUD) {
+                let actionVerb = pendingAction.action.toLowerCase();
+                if (actionVerb === 'create') actionVerb = 'creating';
+                else if (actionVerb === 'update') actionVerb = 'updating';
+                else if (actionVerb === 'delete') actionVerb = 'deleting';
+                return res.status(200).json({ response: helpText + `\n\n*(Would you like to continue ${actionVerb} your trip?)*` });
+            }
+            return res.status(200).json({ response: helpText });
+        }
+
         // 2. ACTIVE PENDING ACTION (Context-Aware Routing)
         if (hasPendingCRUD) {
-            if (['START_NEW_WORKFLOW', 'CREATE_TRIP', 'UPDATE_TRIP', 'DELETE_TRIP', 'READ_TRIPS', 'GREETING', 'GENERAL_CHAT', 'TRAVEL_QUESTION'].includes(intent)) {
-                return res.status(200).json({ response: `You already have a ${pendingAction.action} trip workflow in progress.\n\nWould you like to:\n1. Continue current workflow\n2. Cancel it and start a new operation (Reply 'cancel')` });
+            let currentField = "Unknown";
+            if (pendingAction.action === 'CREATE' && pendingAction.step === 'COLLECTING') {
+                const data = pendingAction.get('data') || {};
+                const missingIndex = fieldsOrder.findIndex(f => !data[f.key] || data[f.key] === '__INVALID__');
+                if (missingIndex !== -1) currentField = fieldsOrder[missingIndex].key;
+            } else if (pendingAction.action === 'UPDATE' && pendingAction.step === 'ASK_VALUE') {
+                const data = pendingAction.get('data') || {};
+                currentField = data.fieldToUpdate || "Unknown";
+            } else if (pendingAction.step === 'SELECTING') {
+                currentField = "Trip Selection";
+            } else if (pendingAction.step === 'CONFIRMING') {
+                currentField = "Confirmation";
+            } else if (pendingAction.step === 'ASK_FIELD') {
+                currentField = "Field Selection";
             }
 
-            // Fallthrough for CONTINUE_WORKFLOW or UNKNOWN (Treat as input to State Machine)
-            
+            const fieldNameMap = {
+                tripName: 'Trip Name', destination: 'Destination', startingPoint: 'Starting Point',
+                startDate: 'Start Date', endDate: 'End Date', budget: 'Budget', numberOfTravelers: 'Number of Travelers',
+                'Trip Selection': 'Trip Selection', 'Confirmation': 'Confirmation', 'Field Selection': 'Field Selection'
+            };
+            const humanField = fieldNameMap[currentField] || currentField;
+
+            console.log(`\n=== WORKFLOW STATE MACHINE DEBUG ===`);
+            console.log(`Current Workflow: ${pendingAction.action}`);
+            console.log(`Current Step: ${pendingAction.step}`);
+            console.log(`Current Field: ${humanField}`);
+            console.log(`Detected Intent: ${intent}`);
+
+            if (prompt.trim().toLowerCase() === 'continue') {
+                console.log(`Final Route Decision: Show Field Prompt (User typed 'continue')`);
+                return res.status(200).json({ response: `You are currently entering ${humanField}. Please provide a value.` });
+            }
+
+            const isConfirmation = pendingAction.step === 'CONFIRMING' && /\b(yes|no|sure|ok|confirm|create|update|cancel)\b/i.test(prompt);
+
+            if (!isConfirmation && ['GREETING', 'GENERAL_CHAT', 'TRAVEL_QUESTION'].includes(intent)) {
+                console.log(`Final Route Decision: Conversational Bypass (with Reminder)`);
+                appendReminder = true;
+                let actionVerb = pendingAction.action.toLowerCase();
+                if (actionVerb === 'create') actionVerb = 'creating';
+                else if (actionVerb === 'update') actionVerb = 'updating';
+                else if (actionVerb === 'delete') actionVerb = 'deleting';
+
+                reminderText = `\n\n*(You are currently ${actionVerb} a trip. Would you like to continue?)*`;
+                
+            } else {
+                console.log(`Final Route Decision: Proceed to State Machine Data Collection`);
+                // Proceed to State Machine
+
             // --- CREATE WORKFLOW ---
             if (pendingAction.action === 'CREATE') {
                 const data = pendingAction.get('data') || {};
@@ -174,8 +372,8 @@ const generateChatResponse = async (req, res, next) => {
                         else if (fieldRaw.includes('starting point')) data.startingPoint = newVal;
                         else if (fieldRaw.includes('trip name') || fieldRaw.includes('name')) data.tripName = newVal;
                         else if (fieldRaw.includes('destination')) data.destination = newVal;
-                        
-                        pendingAction.step = 'COLLECTING'; 
+
+                        pendingAction.step = 'COLLECTING';
                         promptProcessed = true;
                     } else if (/\b(yes|sure|ok|confirm|create)\b/i.test(prompt)) {
                         const newTrip = await Trip.create({
@@ -200,68 +398,55 @@ const generateChatResponse = async (req, res, next) => {
                     const missingIndex = fieldsOrder.findIndex(f => !data[f.key] || data[f.key] === '__INVALID__');
                     if (missingIndex !== -1) {
                         const currentField = fieldsOrder[missingIndex].key;
-                        
+
                         console.log(`\n=== COMMAND DETECTION LAYER ===`);
                         console.log(`Current Expected Field: ${currentField}`);
                         console.log(`User Input: "${prompt}"`);
-                        console.log(`Detected Intent: ${intent}`);
-                        
-                        const isCommandOverride = /\b(?:create|plan|update|change|modify|delete|remove|show|list)\b/i.test(prompt);
-                        
-                        if (isCommandOverride || !['CONTINUE_WORKFLOW', 'UNKNOWN'].includes(intent)) {
-                            console.log(`Value Written?: NO`);
-                            console.log(`Reason: Input identified as a system command override.`);
-                            console.log(`===============================\n`);
-                            return res.status(200).json({ response: `You already have a ${pendingAction.action} trip workflow in progress.\n\nWould you like to:\n1. Continue current workflow\n2. Cancel it and start a new operation (Reply 'cancel')` });
-                        } else {
-                            let rawVal = prompt.trim();
-                            const lowerVal = rawVal.toLowerCase();
-                            
-                            const blockedValues = ['continue', 'yes', 'no', 'cancel', 'confirm'];
-                            if (blockedValues.includes(lowerVal)) {
-                                return res.status(200).json({ response: `"${rawVal}" is a reserved system keyword. Please provide a valid value for the ${currentField === 'tripName' ? 'trip name' : currentField}.` });
-                            }
-                            
-                            if (currentField === 'startDate' || currentField === 'endDate') {
-                                const dateVal = new Date(rawVal);
-                                if (isNaN(dateVal.getTime())) {
-                                    return res.status(200).json({ response: "Please provide a valid date in YYYY-MM-DD format." });
-                                }
-                                if (currentField === 'endDate' && data.startDate && data.startDate !== '__INVALID__') {
-                                    if (dateVal < new Date(data.startDate)) {
-                                        return res.status(200).json({ response: "End date cannot be before start date. Please provide a valid end date." });
-                                    }
-                                }
-                            }
-                            if (currentField === 'budget') {
-                                const val = parseFloat(rawVal);
-                                if (isNaN(val) || val < 0) {
-                                    return res.status(200).json({ response: "Please provide a valid positive number for budget." });
-                                }
-                                rawVal = val;
-                            }
-                            if (currentField === 'numberOfTravelers') {
-                                const val = parseInt(rawVal);
-                                if (isNaN(val) || val <= 0) {
-                                    return res.status(200).json({ response: "Please provide a valid number of travelers (must be at least 1)." });
-                                }
-                                rawVal = val;
-                            }
-                            
-                            data[currentField] = rawVal;
-                            console.log(`Value Written?: YES`);
-                            console.log(`Reason: Valid field input.`);
-                            console.log(`===============================\n`);
+
+                        let rawVal = prompt.trim();
+                        const lowerVal = rawVal.toLowerCase();
+
+                        const blockedValues = ['yes', 'no', 'cancel', 'confirm'];
+                        if (blockedValues.includes(lowerVal)) {
+                            return res.status(200).json({ response: `"${rawVal}" is a reserved system keyword. Please provide a valid value for the ${currentField === 'tripName' ? 'trip name' : currentField}.` });
                         }
+
+                        if (currentField === 'startDate' || currentField === 'endDate') {
+                            const dateVal = new Date(rawVal);
+                            if (isNaN(dateVal.getTime())) {
+                                return res.status(200).json({ response: "Please provide a valid date in YYYY-MM-DD format." });
+                            }
+                            if (currentField === 'endDate' && data.startDate && data.startDate !== '__INVALID__') {
+                                if (dateVal <= new Date(data.startDate)) {
+                                    return res.status(200).json({ response: "End date must be after start date. Please provide a valid end date." });
+                                }
+                            }
+                        }
+                        if (currentField === 'budget') {
+                            const val = parseFloat(rawVal);
+                            if (isNaN(val) || val <= 0) {
+                                return res.status(200).json({ response: "Please provide a valid positive number for budget." });
+                            }
+                            rawVal = val;
+                        }
+                        if (currentField === 'numberOfTravelers') {
+                            const val = parseInt(rawVal);
+                            if (isNaN(val) || val <= 0) {
+                                return res.status(200).json({ response: "Please provide a valid number of travelers (must be at least 1)." });
+                            }
+                            rawVal = val;
+                        }
+
+                        data[currentField] = rawVal;
+                        console.log(`Value Written?: YES`);
+                        console.log(`Reason: Valid field input.`);
+                        console.log(`===============================\n`);
                     }
                 }
 
                 const nextMissingIndex = fieldsOrder.findIndex(f => !data[f.key] || data[f.key] === '__INVALID__');
                 if (nextMissingIndex !== -1) {
-                    pendingAction.data = data;
-                    pendingAction.step = 'COLLECTING';
-                    pendingAction.markModified('data');
-                    await pendingAction.save();
+                    await PendingAction.findByIdAndUpdate(pendingAction._id, { data, step: 'COLLECTING' });
                     return res.status(200).json({ response: fieldsOrder[nextMissingIndex].question });
                 }
 
@@ -269,7 +454,7 @@ const generateChatResponse = async (req, res, next) => {
                 const eDate = new Date(data.endDate);
                 const budget = Number(data.budget);
                 const travelers = Number(data.numberOfTravelers);
-                
+
                 let errorMsg = null;
                 let invalidKey = null;
 
@@ -281,18 +466,12 @@ const generateChatResponse = async (req, res, next) => {
 
                 if (errorMsg) {
                     data[invalidKey] = '__INVALID__';
-                    pendingAction.data = data;
-                    pendingAction.step = 'COLLECTING';
-                    pendingAction.markModified('data');
-                    await pendingAction.save();
+                    await PendingAction.findByIdAndUpdate(pendingAction._id, { data, step: 'COLLECTING' });
                     const invalidQuestion = fieldsOrder.find(f => f.key === invalidKey).question;
                     return res.status(200).json({ response: `${errorMsg}\n\n${invalidQuestion}` });
                 }
 
-                pendingAction.data = data;
-                pendingAction.step = 'CONFIRMING';
-                pendingAction.markModified('data');
-                await pendingAction.save();
+                await PendingAction.findByIdAndUpdate(pendingAction._id, { data, step: 'CONFIRMING' });
 
                 let summary = `Trip Name: ${data.tripName}\nDestination: ${formatDest(data.destination)}\nStarting Point: ${data.startingPoint}\nStart Date: ${data.startDate}\nEnd Date: ${data.endDate}\nBudget: ${data.budget}\nTravelers: ${data.numberOfTravelers}\n\nCreate this trip? (Yes/No)`;
                 return res.status(200).json({ response: summary });
@@ -301,7 +480,7 @@ const generateChatResponse = async (req, res, next) => {
             // --- DELETE WORKFLOW ---
             else if (pendingAction.action === 'DELETE') {
                 const data = pendingAction.get('data') || {};
-                
+
                 if (pendingAction.step === 'SELECTING') {
                     const index = parseInt(prompt.trim()) - 1;
                     const trips = data.trips;
@@ -310,12 +489,9 @@ const generateChatResponse = async (req, res, next) => {
                     }
                     data.tripId = trips[index]._id;
                     data.tripName = trips[index].tripName;
-                    pendingAction.data = data;
-                    pendingAction.step = 'CONFIRMING';
-                    pendingAction.markModified('data');
-                    await pendingAction.save();
+                    await PendingAction.findByIdAndUpdate(pendingAction._id, { data, step: 'CONFIRMING' });
                     return res.status(200).json({ response: `Are you sure you want to delete '${trips[index].tripName}'? (Yes/No)` });
-                } 
+                }
                 else if (pendingAction.step === 'CONFIRMING') {
                     if (/\b(yes|sure|ok|confirm|delete)\b/i.test(prompt)) {
                         await Trip.findByIdAndDelete(data.tripId);
@@ -331,37 +507,31 @@ const generateChatResponse = async (req, res, next) => {
             // --- UPDATE WORKFLOW ---
             else if (pendingAction.action === 'UPDATE') {
                 const data = pendingAction.get('data') || {};
-                
+
                 if (pendingAction.step === 'SELECTING') {
                     const index = parseInt(prompt.trim()) - 1;
                     const trips = data.trips;
                     if (isNaN(index) || index < 0 || index >= trips.length) return res.status(200).json({ response: "Invalid selection. Please reply with a valid number." });
-                    
+
                     data.tripId = trips[index]._id;
                     data.tripName = trips[index].tripName;
-                    pendingAction.data = data;
-                    pendingAction.step = 'ASK_FIELD';
-                    pendingAction.markModified('data');
-                    await pendingAction.save();
+                    await PendingAction.findByIdAndUpdate(pendingAction._id, { data, step: 'ASK_FIELD' });
                     return res.status(200).json({ response: `Updating '${trips[index].tripName}'. Which field would you like to update? (e.g., budget, travelers, start date)` });
                 }
                 else if (pendingAction.step === 'ASK_FIELD') {
                     data.fieldToUpdate = prompt.trim().toLowerCase();
-                    pendingAction.data = data;
-                    pendingAction.step = 'ASK_VALUE';
-                    pendingAction.markModified('data');
-                    await pendingAction.save();
+                    await PendingAction.findByIdAndUpdate(pendingAction._id, { data, step: 'ASK_VALUE' });
                     return res.status(200).json({ response: `What is the new value for ${data.fieldToUpdate}?` });
                 }
                 else if (pendingAction.step === 'ASK_VALUE') {
                     const field = data.fieldToUpdate;
                     let rawVal = prompt.trim();
-                    
+
                     const blockedValues = ['continue', 'yes', 'no', 'cancel', 'confirm'];
                     if (blockedValues.includes(rawVal.toLowerCase())) {
                         return res.status(200).json({ response: `"${rawVal}" is a reserved system keyword. Please provide a valid value.` });
                     }
-                    
+
                     if (field === 'startdate' || field === 'enddate' || field === 'start date' || field === 'end date') {
                         const dateVal = new Date(rawVal);
                         if (isNaN(dateVal.getTime())) {
@@ -370,7 +540,7 @@ const generateChatResponse = async (req, res, next) => {
                     }
                     if (field === 'budget') {
                         const val = parseFloat(rawVal);
-                        if (isNaN(val) || val < 0) {
+                        if (isNaN(val) || val <= 0) {
                             return res.status(200).json({ response: "Please provide a valid positive number for budget." });
                         }
                         rawVal = val;
@@ -382,12 +552,9 @@ const generateChatResponse = async (req, res, next) => {
                         }
                         rawVal = val;
                     }
-                    
+
                     data.newValue = rawVal;
-                    pendingAction.data = data;
-                    pendingAction.step = 'CONFIRMING';
-                    pendingAction.markModified('data');
-                    await pendingAction.save();
+                    await PendingAction.findByIdAndUpdate(pendingAction._id, { data, step: 'CONFIRMING' });
                     return res.status(200).json({ response: `Are you sure you want to change '${data.tripName}' ${data.fieldToUpdate} to ${data.newValue}? (Yes/No)` });
                 }
                 else if (pendingAction.step === 'CONFIRMING') {
@@ -413,19 +580,20 @@ const generateChatResponse = async (req, res, next) => {
             }
 
             return res.status(200).json({ response: "I didn't understand that. Please reply to the prompt or type 'cancel'." });
+            }
         }
 
         // 3. NO PENDING CRUD ACTION (New Intent Processing)
-        
+
         // --- CONTEXT RESOLUTION ---
         if (pendingAction && pendingAction.action === 'CONTEXT') {
             const context = pendingAction.data;
             const timeDiff = Date.now() - context.lastQueryTimestamp;
-            
+
             if (timeDiff < 5 * 60 * 1000) { // Valid for 5 minutes
                 let resolvedIntent = null;
                 const lowerPrompt = prompt.toLowerCase();
-                
+
                 if (['READ_TRIPS_COUNT', 'READ_TRIPS_SPECIFIC_COUNT'].includes(context.lastIntent) && /\b(what are those|show them|list them|which ones|show me|show them to me)\b/i.test(lowerPrompt)) {
                     resolvedIntent = 'LIST_TRIPS';
                 }
@@ -443,7 +611,7 @@ const generateChatResponse = async (req, res, next) => {
                     console.log(`Resolved Intent: ${resolvedIntent}`);
                     console.log(`MongoDB Query Executed: YES`);
                     console.log(`=======================\n`);
-                    
+
                     if (resolvedIntent === 'LIST_TRIPS') {
                         let query = { userId };
                         if (context.lastIntent === 'READ_TRIPS_SPECIFIC_COUNT' && context.lastDestination) {
@@ -489,7 +657,7 @@ const generateChatResponse = async (req, res, next) => {
             console.log(`MongoDB Retrieval Executed: YES (Fetching user trips)`);
             const userTrips = await Trip.find({ userId });
             if (userTrips.length === 0) return res.status(200).json({ response: `You currently have no trips saved.` });
-            
+
             let reasoningLog = "Generic List";
             let responseText = "";
             let contextData = null;
@@ -550,7 +718,7 @@ const generateChatResponse = async (req, res, next) => {
                     }
                 } else {
                     reasoningLog = "Generic List of all trips";
-                    userTrips.sort((a,b) => new Date(a.startDate) - new Date(b.startDate));
+                    userTrips.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
                     responseText = `You have ${userTrips.length} saved trip(s):\n\n`;
                     userTrips.forEach(trip => {
                         const sd = new Date(trip.startDate).toLocaleDateString();
@@ -562,7 +730,7 @@ const generateChatResponse = async (req, res, next) => {
             }
 
             console.log(`Reasoning Operation: ${reasoningLog}`);
-            
+
             // Save Conversation Context explicitly 
             if (contextData) {
                 contextData.lastQueryTimestamp = Date.now();
@@ -580,9 +748,9 @@ const generateChatResponse = async (req, res, next) => {
             const createMatch1 = prompt.match(/\b(?:create|add|save|plan)\s+(?:a\s+)?(.+?)\s+trip\b/i);
             const createMatch2 = prompt.match(/\b(?:create|add|save|plan)\s+(?:a\s+)?trip\s+to\s+(.+?)(?:\s+from|\s+with|$)/i);
             let destination = null;
-            if (createMatch1) destination = createMatch1[1].trim();
+            if (createMatch1 && !['a', 'an'].includes(createMatch1[1].trim().toLowerCase())) destination = createMatch1[1].trim();
             else if (createMatch2) destination = createMatch2[1].trim();
-            
+
             const data = destination ? { destination: formatDest(destination) } : {};
             // Will safely overwrite CONTEXT if it exists
             await PendingAction.findOneAndUpdate(
@@ -590,20 +758,20 @@ const generateChatResponse = async (req, res, next) => {
                 { action: 'CREATE', step: 'COLLECTING', data },
                 { upsert: true }
             );
-            
+
             const nextMissingIndex = fieldsOrder.findIndex(f => !data[f.key]);
             return res.status(200).json({ response: fieldsOrder[nextMissingIndex].question });
         }
 
         if (intent === 'UPDATE_TRIP') {
             let searchTerm = prompt.replace(/\b(?:change|update|modify|edit)\b/i, '').replace(/\b(?:my|a|the)\b/i, '').replace(/\btrips?\b/i, '').trim();
-            
+
             let trips = [];
             if (searchTerm) {
                 const safeTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 // 1. Try EXACT trip name match first
                 trips = await Trip.find({ userId, tripName: new RegExp(`^${safeTerm}$`, 'i') });
-                
+
                 // 2. If no exact match, fall back to partial search
                 if (trips.length === 0) {
                     trips = await Trip.find({
@@ -617,7 +785,7 @@ const generateChatResponse = async (req, res, next) => {
             } else {
                 trips = await Trip.find({ userId });
             }
-            
+
             if (trips.length === 0) return res.status(200).json({ response: `I couldn't find any trips to update.` });
             if (trips.length === 1) {
                 await PendingAction.findOneAndUpdate({ userId }, { action: 'UPDATE', step: 'ASK_FIELD', data: { tripId: trips[0]._id, tripName: trips[0].tripName } }, { upsert: true });
@@ -633,13 +801,13 @@ const generateChatResponse = async (req, res, next) => {
 
         if (intent === 'DELETE_TRIP') {
             let searchTerm = prompt.replace(/\b(?:delete|remove|cancel)\b/i, '').replace(/\b(?:my|a|the)\b/i, '').replace(/\btrips?\b/i, '').trim();
-            
+
             let trips = [];
             if (searchTerm) {
                 const safeTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 // 1. Try EXACT trip name match first
                 trips = await Trip.find({ userId, tripName: new RegExp(`^${safeTerm}$`, 'i') });
-                
+
                 // 2. If no exact match, fall back to partial search
                 if (trips.length === 0) {
                     trips = await Trip.find({
@@ -653,7 +821,7 @@ const generateChatResponse = async (req, res, next) => {
             } else {
                 trips = await Trip.find({ userId });
             }
-            
+
             if (trips.length === 0) return res.status(200).json({ response: `I couldn't find any trips to delete.` });
             if (trips.length === 1) {
                 await PendingAction.findOneAndUpdate({ userId }, { action: 'DELETE', step: 'CONFIRMING', data: { tripId: trips[0]._id, tripName: trips[0].tripName } }, { upsert: true });
@@ -670,16 +838,19 @@ const generateChatResponse = async (req, res, next) => {
         // 4. FALLBACK TO GROQ FOR TRAVEL ADVICE / CHAT
         const formattedHistory = (history || []).map(msg => ({ role: msg.role, content: msg.content }));
         const messages = [{ role: "system", content: systemPrompt }, ...formattedHistory, { role: "user", content: prompt }];
-        
+
         try {
             if (simulateOutage) {
                 throw new Error("Simulated Outage");
             }
             const chatCompletion = await groq.chat.completions.create({
                 messages: messages,
-                model: "llama-3.3-70b-versatile",
+                model: "llama-3.1-8b-instant",
             });
-            const responseText = chatCompletion.choices[0]?.message?.content || "";
+            let responseText = chatCompletion.choices[0]?.message?.content || "";
+            if (appendReminder) {
+                responseText += reminderText;
+            }
             return res.status(200).json({ response: responseText });
         } catch (e) {
             if (process.env.NODE_ENV !== 'production') {
@@ -687,7 +858,7 @@ const generateChatResponse = async (req, res, next) => {
                 console.error(e.message || e);
                 console.error("=============================\n");
             }
-            return res.status(200).json({ response: "I'm having trouble connecting to my knowledge base right now. Please try again later." });
+            return res.status(200).json({ response: "I'm having trouble connecting to my knowledge base right now. Error: " + (e.message || "Unknown error") });
         }
 
     } catch (error) {

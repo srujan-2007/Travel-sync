@@ -11,13 +11,17 @@ const createTrip = async (req, res, next) => {
         const { budget, startDate, endDate } = req.body;
 
         // Manual validation
-        if (budget !== undefined && budget < 0) {
+        if (budget !== undefined && budget <= 0) {
             res.status(400);
-            return next(new Error('Budget cannot be negative'));
+            return next(new Error('Budget must be a positive number'));
         }
-        if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+        if (req.body.numberOfTravelers !== undefined && req.body.numberOfTravelers < 1) {
             res.status(400);
-            return next(new Error('Start date cannot be after end date'));
+            return next(new Error('Travelers must be at least 1'));
+        }
+        if (startDate && endDate && new Date(startDate) >= new Date(endDate)) {
+            res.status(400);
+            return next(new Error('End date must be after start date'));
         }
 
         // req.user.id comes from the protect middleware
@@ -105,13 +109,17 @@ const updateTrip = async (req, res, next) => {
         const { budget, startDate, endDate } = req.body;
 
         // Manual validation
-        if (budget !== undefined && budget < 0) {
+        if (budget !== undefined && budget <= 0) {
             res.status(400);
-            return next(new Error('Budget cannot be negative'));
+            return next(new Error('Budget must be a positive number'));
         }
-        if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+        if (req.body.numberOfTravelers !== undefined && req.body.numberOfTravelers < 1) {
             res.status(400);
-            return next(new Error('Start date cannot be after end date'));
+            return next(new Error('Travelers must be at least 1'));
+        }
+        if (startDate && endDate && new Date(startDate) >= new Date(endDate)) {
+            res.status(400);
+            return next(new Error('End date must be after start date'));
         }
 
         const trip = await Trip.findById(req.params.id);
