@@ -44,4 +44,32 @@ const tripSchema = new mongoose.Schema(
     }
 );
 
+// Helper function for cascading deletes
+async function cascadeDelete(tripId) {
+    const models = ['Expense', 'Memory', 'Activity', 'Itinerary', 'Location'];
+    for (const modelName of models) {
+        try {
+            const model = mongoose.model(modelName);
+            await model.deleteMany({ tripId });
+            console.log(`[Trip Middleware] Cascaded deletion: Removed ${modelName}s linked to Trip ${tripId}`);
+        } catch (err) {
+            // If a model is not registered yet, it might throw, but we can safely ignore or log it.
+            console.error(`[Trip Middleware] Error cascading delete for ${modelName}:`, err);
+        }
+    }
+}
+
+// Middleware for Trip.findByIdAndDelete() or Trip.findOneAndDelete()
+tripSchema.post('findOneAndDelete', async function(doc) {
+    if (doc) {
+        await cascadeDelete(doc._id);
+    }
+});
+
+// Middleware for trip.deleteOne()
+tripSchema.pre('deleteOne', { document: true, query: false }, async function(next) {
+    await cascadeDelete(this._id);
+    next();
+});
+
 module.exports = mongoose.model('Trip', tripSchema);

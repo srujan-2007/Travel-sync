@@ -140,14 +140,7 @@ const deleteTrip = async (req, res, next) => {
     try {
         const trip = await Trip.findById(req.params.id);
         if (trip && trip.userId.toString() === req.user.id) {
-            // Cascade Delete: Remove all related documents first
-            await Expense.deleteMany({ tripId: req.params.id });
-            await Memory.deleteMany({ tripId: req.params.id });
-            await Activity.deleteMany({ tripId: req.params.id });
-            await Itinerary.deleteMany({ tripId: req.params.id });
-            await Location.deleteMany({ tripId: req.params.id });
-
-            // Now delete the trip itself
+            // The Trip model middleware will automatically cascade this deletion
             await trip.deleteOne();
             res.json({ message: 'Trip and all related data removed' });
         } else {

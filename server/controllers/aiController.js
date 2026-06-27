@@ -1,6 +1,7 @@
 const Groq = require('groq-sdk');
 const Trip = require('../models/Trip');
 const PendingAction = require('../models/PendingAction');
+const { generateTravelPlan } = require('../services/aiPlannerService');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -73,7 +74,11 @@ Examples: best places in goa, when to visit japan, information about paris
 Non-task conversational messages.
 Examples: tell me a joke, thank you, ok, nice, cool
 
-11. START_NEW_WORKFLOW
+11. GENERATE_PLAN
+User wants the AI to generate a travel itinerary or plan for a saved trip.
+Examples: generate itinerary, plan my trip, generate plan, trip itinerary
+
+12. START_NEW_WORKFLOW
 ONLY when:
 - hasPendingWorkflow = true
 AND
@@ -81,7 +86,7 @@ AND
 AND
 - it is NOT part of answering a form step
 
-12. CONTINUE_WORKFLOW (VERY IMPORTANT RULE)
+13. CONTINUE_WORKFLOW (VERY IMPORTANT RULE)
 This is the MOST IMPORTANT CLASS.
 
 If hasPendingWorkflow = true, classify as CONTINUE_WORKFLOW when:
@@ -105,7 +110,7 @@ ONLY classify as CONTINUE_WORKFLOW when:
 - AND it does NOT contain command words like:
   create, update, delete, remove, show, list, cancel, abort, stop, restart, help
 
-13. UNKNOWN
+14. UNKNOWN
 Only when input cannot be understood at all
 
 ========================
@@ -158,8 +163,22 @@ User: "what is best time to visit goa"
             temperature: 0,
             response_format: { type: 'json_object' }
         });
-        const parsed = JSON.parse(res.choices[0].message.content.trim());
-        return parsed.intent || 'UNKNOWN';
+
+        const responseText = res.choices[0].message.content;
+        const parsed = JSON.parse(responseText);
+        let intent = parsed.intent || 'UNKNOWN';
+
+        // --- DETERMINISTIC OVERRIDE FOR CRUD WORKFLOWS ---
+        // If the LLM misclassifies a short field value (like "1" or "yes") as GREETING/UNKNOWN
+        // we force it to CONTINUE_WORKFLOW as long as they aren't trying to run a new command.
+        if (hasPendingWorkflow) {
+            const isCommand = /\b(?:create|plan|update|change|modify|delete|remove|show|list|generate)\b/i.test(prompt.toLowerCase());
+            if (!isCommand) {
+                intent = 'CONTINUE_WORKFLOW';
+            }
+        }
+
+        return intent;
     } catch (e) {
         if (process.env.NODE_ENV !== 'production') {
             console.error("\n=== INTENT CLASSIFICATION ERROR ===");
@@ -235,6 +254,7 @@ const generateChatResponse = async (req, res, next) => {
             else if (/\b(?:create|plan|add|new)\b/i.test(p)) intent = 'CREATE_TRIP';
             else if (/\b(?:update|change|modify|edit)\b/i.test(p)) intent = 'UPDATE_TRIP';
             else if (/\b(?:delete|remove)\b/i.test(p)) intent = 'DELETE_TRIP';
+            else if (/\b(?:generate|plan|create)\b.*\b(?:itinerary|plan|schedule)\b/i.test(p)) intent = 'GENERATE_PLAN';
             else if (readTripsRegexes.some(r => r.test(p))) intent = 'READ_TRIPS';
             else {
                 const isChatOrQuestion = /\b(?:hi|hello|hey|joke|weather|how are you|thank you|thanks|tell me|who are you|capital)\b/i.test(p) || /\?$/.test(p.trim());
@@ -341,7 +361,7 @@ const generateChatResponse = async (req, res, next) => {
 
             const isConfirmation = pendingAction.step === 'CONFIRMING' && /\b(yes|no|sure|ok|confirm|create|update|cancel)\b/i.test(prompt);
 
-            if (!isConfirmation && ['GREETING', 'GENERAL_CHAT', 'TRAVEL_QUESTION'].includes(intent)) {
+            if (!isConfirmation && ['GREETING', 'GENERAL_CHAT', 'TRAVEL_QUESTION', 'READ_TRIPS'].includes(intent)) {
                 console.log(`Final Route Decision: Conversational Bypass (with Reminder)`);
                 appendReminder = true;
                 let actionVerb = pendingAction.action.toLowerCase();
@@ -835,7 +855,19 @@ const generateChatResponse = async (req, res, next) => {
             }
         }
 
-        // 4. FALLBACK TO GROQ FOR TRAVEL ADVICE / CHAT
+        // 4. GENERATE AI PLAN
+        if (intent === 'GENERATE_PLAN') {
+            console.log(`Executing AI Planner Service for most recent trip...`);
+            const latestTrip = await Trip.findOne({ userId }).sort({ _id: -1 });
+            if (!latestTrip) {
+                return res.status(200).json({ response: "You don't have any trips saved yet. Let's create one first! What should be the trip name?" });
+            }
+            
+            const planResponse = await generateTravelPlan(latestTrip);
+            return res.status(200).json({ response: planResponse });
+        }
+
+        // 5. FALLBACK TO GROQ FOR TRAVEL ADVICE / CHAT
         const formattedHistory = (history || []).map(msg => ({ role: msg.role, content: msg.content }));
         const messages = [{ role: "system", content: systemPrompt }, ...formattedHistory, { role: "user", content: prompt }];
 
