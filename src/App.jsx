@@ -11,6 +11,7 @@ import CreateTrip from './pages/CreateTrip/CreateTrip';
 import EditTrip from './pages/EditTrip/EditTrip';
 import TripDetails from './pages/TripDetails/TripDetails';
 import Profile from './pages/Profile/Profile';
+import GoogleCallback from './pages/Auth/GoogleCallback';
 
 // Import Protected Route Component
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
@@ -29,6 +30,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/auth/google/callback" element={<GoogleCallback />} />
           
           {/* Protected Routes */}
           <Route 

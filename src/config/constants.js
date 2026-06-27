@@ -7,4 +7,5 @@ export const CONFIG = {
   
   // Future configurations can go here (e.g., timeout limits, API keys if public)
   API_TIMEOUT: 10000,
+  GOOGLE_CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID,
 };

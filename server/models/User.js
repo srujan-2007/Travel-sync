@@ -15,11 +15,21 @@ const userSchema = new mongoose.Schema(
         },
         mobileNumber: {
             type: String,
-            required: true,
+            required: false, // Made optional for OAuth users
         },
         password: {
             type: String,
-            required: true,
+            required: false, // Made optional for OAuth users
+        },
+        provider: {
+            type: String,
+            default: 'local',
+        },
+        googleId: {
+            type: String,
+        },
+        avatar: {
+            type: String,
         },
     },
     {

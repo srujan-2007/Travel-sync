@@ -1,6 +1,9 @@
 const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Helper function to generate a JWT token
 // It embeds the user's ID inside the token and signs it with our secret key
@@ -149,9 +152,93 @@ const updateProfile = async (req, res, next) => {
     }
 };
 
+// @desc    Login or register via Google OAuth
+// @route   POST /api/auth/google
+// @access  Public
+const googleLogin = async (req, res, next) => {
+    try {
+        const { idToken } = req.body;
+
+        if (!idToken) {
+            res.status(400);
+            return next(new Error('Google ID Token is required'));
+        }
+
+        // Verify Google token
+        let ticket;
+        try {
+            ticket = await googleClient.verifyIdToken({
+                idToken,
+                audience: process.env.GOOGLE_CLIENT_ID,
+            });
+        } catch (err) {
+            res.status(401);
+            return next(new Error(`Invalid Google ID Token: ${err.message}`));
+        }
+
+        const payload = ticket.getPayload();
+        const { sub: googleId, email, name, picture: avatar } = payload;
+
+        if (!email) {
+            res.status(400);
+            return next(new Error('Google account must have a verified email address'));
+        }
+
+        // Search for user by email (username field stores email in TravelSync)
+        let user = await User.findOne({ username: email });
+
+        if (user) {
+            // User exists - link Google OAuth provider details if not already present
+            let updated = false;
+            if (!user.googleId) {
+                user.googleId = googleId;
+                updated = true;
+            }
+            if (user.provider !== 'google') {
+                user.provider = 'google';
+                updated = true;
+            }
+            if (avatar && !user.avatar) {
+                user.avatar = avatar;
+                updated = true;
+            }
+            if (updated) {
+                await user.save();
+            }
+        } else {
+            // User doesn't exist - create a new one automatically
+            // Enforce safe dummy password so standard logins cannot brute-force
+            const salt = await bcrypt.genSalt(10);
+            const randomPassword = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+            const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+            user = await User.create({
+                name,
+                username: email,
+                mobileNumber: 'Not Provided',
+                password: hashedPassword,
+                provider: 'google',
+                googleId,
+                avatar
+            });
+        }
+
+        res.status(200).json({
+            _id: user._id,
+            name: user.name,
+            username: user.username,
+            avatar: user.avatar,
+            token: generateToken(user._id),
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     signup,
     login,
+    googleLogin,
     getProfile,
     updateProfile,
 };

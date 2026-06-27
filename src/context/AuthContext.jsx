@@ -53,6 +53,33 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Google login function connecting to backend
+  const loginWithGoogle = async (idToken) => {
+    try {
+      const data = await authService.loginWithGoogle(idToken);
+      
+      // Store token and user data in local storage
+      localStorage.setItem('token', data.token);
+      
+      const userObj = {
+        _id: data._id,
+        name: data.name,
+        username: data.username,
+        avatar: data.avatar
+      };
+      
+      localStorage.setItem('user', JSON.stringify(userObj));
+      
+      // Update state
+      setToken(data.token);
+      setCurrentUser(userObj);
+      
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  };
+
   // Real signup function connecting to backend
   const signup = async (userData) => {
     try {
@@ -81,6 +108,7 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated,
     login,
     signup,
+    loginWithGoogle,
     logout
   };
 
