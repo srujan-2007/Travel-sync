@@ -178,6 +178,11 @@ User: "what is best time to visit goa"
             }
         }
 
+        // --- HARD CANCEL OVERRIDE ---
+        if (/\b(cancel|abort|stop|exit|quit|never mind)\b/i.test(prompt)) {
+            intent = 'CANCEL_WORKFLOW';
+        }
+
         return intent;
     } catch (e) {
         if (process.env.NODE_ENV !== 'production') {
@@ -375,8 +380,8 @@ const generateChatResponse = async (req, res, next) => {
                 console.log(`Final Route Decision: Proceed to State Machine Data Collection`);
                 // Proceed to State Machine
 
-            // --- CREATE WORKFLOW ---
-            if (pendingAction.action === 'CREATE') {
+            // --- CREATE OR PLAN_AD_HOC WORKFLOW ---
+            if (pendingAction.action === 'CREATE' || pendingAction.action === 'PLAN_AD_HOC') {
                 const data = pendingAction.get('data') || {};
                 let promptProcessed = false;
 
@@ -395,22 +400,39 @@ const generateChatResponse = async (req, res, next) => {
 
                         pendingAction.step = 'COLLECTING';
                         promptProcessed = true;
-                    } else if (/\b(yes|sure|ok|confirm|create)\b/i.test(prompt)) {
-                        const newTrip = await Trip.create({
-                            userId,
-                            tripName: data.tripName,
-                            destination: formatDest(data.destination),
-                            startingPoint: data.startingPoint,
-                            startDate: new Date(data.startDate),
-                            endDate: new Date(data.endDate),
-                            budget: Number(data.budget),
-                            numberOfTravelers: Number(data.numberOfTravelers)
-                        });
-                        await PendingAction.findByIdAndDelete(pendingAction._id);
-                        return res.status(200).json({ response: `Success! Trip '${newTrip.tripName}' has been created.` });
+                    } else if (/\b(yes|sure|ok|confirm|create|plan|generate)\b/i.test(prompt)) {
+                        if (pendingAction.action === 'CREATE') {
+                            const newTrip = await Trip.create({
+                                userId,
+                                tripName: data.tripName,
+                                destination: formatDest(data.destination),
+                                startingPoint: data.startingPoint,
+                                startDate: new Date(data.startDate),
+                                endDate: new Date(data.endDate),
+                                budget: Number(data.budget),
+                                numberOfTravelers: Number(data.numberOfTravelers)
+                            });
+                            await PendingAction.findByIdAndDelete(pendingAction._id);
+                            return res.status(200).json({ response: `Success! Trip '${newTrip.tripName}' has been created.` });
+                        } else {
+                            // PLAN_AD_HOC
+                            await PendingAction.findByIdAndDelete(pendingAction._id);
+                            console.log("Ad-Hoc AI Planner Invoked");
+                            const mockTrip = {
+                                tripName: data.tripName,
+                                destination: formatDest(data.destination),
+                                startingPoint: data.startingPoint,
+                                startDate: new Date(data.startDate),
+                                endDate: new Date(data.endDate),
+                                budget: Number(data.budget),
+                                numberOfTravelers: Number(data.numberOfTravelers)
+                            };
+                            const planResponse = await generateTravelPlan(mockTrip);
+                            return res.status(200).json({ response: planResponse });
+                        }
                     } else if (/\b(no)\b/i.test(prompt)) {
                         await PendingAction.findByIdAndDelete(pendingAction._id);
-                        return res.status(200).json({ response: "Trip creation cancelled." });
+                        return res.status(200).json({ response: `${pendingAction.action === 'CREATE' ? 'Trip creation' : 'Trip planning'} cancelled.` });
                     }
                 }
 
@@ -426,7 +448,20 @@ const generateChatResponse = async (req, res, next) => {
                         let rawVal = prompt.trim();
                         const lowerVal = rawVal.toLowerCase();
 
-                        const blockedValues = ['yes', 'no', 'cancel', 'confirm'];
+                        // --- SMART AUTO-LOAD FOR EXISTING TRIPS ---
+                        if (currentField === 'tripName' && pendingAction.action === 'PLAN_AD_HOC') {
+                            const cleanedName = rawVal.replace(/["':]/g, '').trim();
+                            const existingTrip = await Trip.findOne({ userId, tripName: new RegExp(`^${cleanedName}$`, 'i') });
+                            
+                            if (existingTrip) {
+                                await PendingAction.findByIdAndDelete(pendingAction._id);
+                                console.log("User provided existing trip name during AD_HOC collection, auto-generating plan...");
+                                const planResponse = await generateTravelPlan(existingTrip);
+                                return res.status(200).json({ response: planResponse });
+                            }
+                        }
+
+                        const blockedValues = ['yes', 'no', 'confirm'];
                         if (blockedValues.includes(lowerVal)) {
                             return res.status(200).json({ response: `"${rawVal}" is a reserved system keyword. Please provide a valid value for the ${currentField === 'tripName' ? 'trip name' : currentField}.` });
                         }
@@ -493,7 +528,9 @@ const generateChatResponse = async (req, res, next) => {
 
                 await PendingAction.findByIdAndUpdate(pendingAction._id, { data, step: 'CONFIRMING' });
 
-                let summary = `Trip Name: ${data.tripName}\nDestination: ${formatDest(data.destination)}\nStarting Point: ${data.startingPoint}\nStart Date: ${data.startDate}\nEnd Date: ${data.endDate}\nBudget: ${data.budget}\nTravelers: ${data.numberOfTravelers}\n\nCreate this trip? (Yes/No)`;
+                let summary = `Trip Name: ${data.tripName}\nDestination: ${formatDest(data.destination)}\nStarting Point: ${data.startingPoint}\nStart Date: ${data.startDate}\nEnd Date: ${data.endDate}\nBudget: ${data.budget}\nTravelers: ${data.numberOfTravelers}\n\n`;
+                if (pendingAction.action === 'CREATE') summary += `Create this trip? (Yes/No)`;
+                else summary += `Generate the itinerary for this trip? (Yes/No)`;
                 return res.status(200).json({ response: summary });
             }
 
@@ -784,65 +821,110 @@ const generateChatResponse = async (req, res, next) => {
         }
 
         if (intent === 'UPDATE_TRIP') {
-            let searchTerm = prompt.replace(/\b(?:change|update|modify|edit)\b/i, '').replace(/\b(?:my|a|the)\b/i, '').replace(/\btrips?\b/i, '').trim();
+            let rawSearch = prompt.replace(/\b(?:change|update|modify|edit)\b/i, '').replace(/\b(?:my|a|the)\b/i, '').replace(/\btrips?\b/i, '').trim();
+            // Remove quotes, colons, or stray punctuation that might mess up the lookup
+            let searchTerm = rawSearch.replace(/["':]/g, '').trim();
+
+            console.log(`\n--- DB LOOKUP TRACE ---`);
+            console.log(`Detected Intent: UPDATE_TRIP`);
+            console.log(`Extracted Trip Name: "${searchTerm}"`);
 
             let trips = [];
             if (searchTerm) {
                 const safeTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                
                 // 1. Try EXACT trip name match first
-                trips = await Trip.find({ userId, tripName: new RegExp(`^${safeTerm}$`, 'i') });
+                const exactQuery = { userId, tripName: new RegExp(`^${safeTerm}$`, 'i') };
+                console.log(`Executing EXACT Query:`, exactQuery);
+                trips = await Trip.find(exactQuery);
 
                 // 2. If no exact match, fall back to partial search
                 if (trips.length === 0) {
-                    trips = await Trip.find({
+                    const partialQuery = {
                         userId,
                         $or: [
                             { tripName: new RegExp(safeTerm, 'i') },
                             { destination: new RegExp(safeTerm, 'i') }
                         ]
-                    });
+                    };
+                    console.log(`Executing PARTIAL Query:`, JSON.stringify(partialQuery));
+                    trips = await Trip.find(partialQuery);
                 }
             } else {
+                console.log(`Executing FETCH ALL Query: { userId }`);
                 trips = await Trip.find({ userId });
             }
 
-            if (trips.length === 0) return res.status(200).json({ response: `I couldn't find any trips to update.` });
+            console.log(`Number of matching trips: ${trips.length}\n-----------------------\n`);
+
+            if (trips.length === 0) {
+                // Fallback: If they provided a messy search term that matched nothing, fetch all trips instead of failing
+                trips = await Trip.find({ userId });
+                if (trips.length === 0) return res.status(200).json({ response: `You don't have any trips to update.` });
+                
+                await PendingAction.findOneAndUpdate({ userId }, { action: 'UPDATE', step: 'SELECTING', data: { trips } }, { upsert: true });
+                let responseText = `I couldn't find a trip matching that exact name. Which of your trips would you like to update?\n\n`;
+                trips.forEach((t, i) => { responseText += `${i + 1}. **${t.tripName}** (${formatDest(t.destination)})\n`; });
+                return res.status(200).json({ response: responseText });
+            }
+
             if (trips.length === 1) {
                 await PendingAction.findOneAndUpdate({ userId }, { action: 'UPDATE', step: 'ASK_FIELD', data: { tripId: trips[0]._id, tripName: trips[0].tripName } }, { upsert: true });
                 return res.status(200).json({ response: `Updating '${trips[0].tripName}'. Which field would you like to update? (e.g., budget, travelers, start date)` });
             } else {
                 await PendingAction.findOneAndUpdate({ userId }, { action: 'UPDATE', step: 'SELECTING', data: { trips } }, { upsert: true });
-                let responseText = `I found multiple trips:\n\n`;
+                let responseText = `I found multiple trips. Which one would you like to update?\n\n`;
                 trips.forEach((t, i) => { responseText += `${i + 1}. **${t.tripName}** (${formatDest(t.destination)})\n`; });
-                responseText += `\nWhich one would you like to update? (Reply with number)`;
                 return res.status(200).json({ response: responseText });
             }
         }
 
         if (intent === 'DELETE_TRIP') {
-            let searchTerm = prompt.replace(/\b(?:delete|remove|cancel)\b/i, '').replace(/\b(?:my|a|the)\b/i, '').replace(/\btrips?\b/i, '').trim();
+            let rawSearch = prompt.replace(/\b(?:delete|remove|cancel)\b/i, '').replace(/\b(?:my|a|the)\b/i, '').replace(/\btrips?\b/i, '').trim();
+            // Remove quotes, colons, or stray punctuation that might mess up the lookup
+            let searchTerm = rawSearch.replace(/["':]/g, '').trim();
+
+            console.log(`\n--- DB LOOKUP TRACE ---`);
+            console.log(`Detected Intent: DELETE_TRIP`);
+            console.log(`Extracted Trip Name: "${searchTerm}"`);
 
             let trips = [];
             if (searchTerm) {
                 const safeTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                
                 // 1. Try EXACT trip name match first
-                trips = await Trip.find({ userId, tripName: new RegExp(`^${safeTerm}$`, 'i') });
+                const exactQuery = { userId, tripName: new RegExp(`^${safeTerm}$`, 'i') };
+                console.log(`Executing EXACT Query:`, exactQuery);
+                trips = await Trip.find(exactQuery);
 
                 // 2. If no exact match, fall back to partial search
                 if (trips.length === 0) {
-                    trips = await Trip.find({
+                    const partialQuery = {
                         userId,
                         $or: [
                             { tripName: new RegExp(safeTerm, 'i') },
                             { destination: new RegExp(safeTerm, 'i') }
                         ]
-                    });
+                    };
+                    console.log(`Executing PARTIAL Query:`, JSON.stringify(partialQuery));
+                    trips = await Trip.find(partialQuery);
                 }
             } else {
+                console.log(`Executing FETCH ALL Query: { userId }`);
                 trips = await Trip.find({ userId });
             }
 
-            if (trips.length === 0) return res.status(200).json({ response: `I couldn't find any trips to delete.` });
+            if (trips.length === 0) {
+                // Fallback: If they provided a messy search term that matched nothing, fetch all trips instead of failing
+                trips = await Trip.find({ userId });
+                if (trips.length === 0) return res.status(200).json({ response: `You don't have any trips to delete.` });
+                
+                await PendingAction.findOneAndUpdate({ userId }, { action: 'DELETE', step: 'SELECTING', data: { trips } }, { upsert: true });
+                let responseText = `I couldn't find a trip matching that exact name. Which of your trips would you like to delete?\n\n`;
+                trips.forEach((t, i) => { responseText += `${i + 1}. **${t.tripName}** (${formatDest(t.destination)})\n`; });
+                return res.status(200).json({ response: responseText });
+            }
+
             if (trips.length === 1) {
                 await PendingAction.findOneAndUpdate({ userId }, { action: 'DELETE', step: 'CONFIRMING', data: { tripId: trips[0]._id, tripName: trips[0].tripName } }, { upsert: true });
                 return res.status(200).json({ response: `Are you sure you want to delete '${trips[0].tripName}'? (Yes/No)` });
@@ -857,14 +939,36 @@ const generateChatResponse = async (req, res, next) => {
 
         // 4. GENERATE AI PLAN
         if (intent === 'GENERATE_PLAN') {
-            console.log(`Executing AI Planner Service for most recent trip...`);
-            const latestTrip = await Trip.findOne({ userId }).sort({ _id: -1 });
-            if (!latestTrip) {
-                return res.status(200).json({ response: "You don't have any trips saved yet. Let's create one first! What should be the trip name?" });
+            console.log(`Executing AI Planner Service...`);
+
+            const allTrips = await Trip.find({ userId }).sort({ _id: -1 });
+            let targetTrip = null;
+
+            const lowerPrompt = prompt.toLowerCase();
+            const mentionedTrips = allTrips.filter(t => lowerPrompt.includes(t.tripName.toLowerCase()));
+
+            if (mentionedTrips.length > 0) {
+                const upcomingTrips = mentionedTrips.filter(t => new Date(t.startDate) > new Date());
+                targetTrip = upcomingTrips.length > 0 ? upcomingTrips[0] : mentionedTrips[0];
+            } else {
+                // If they didn't mention a trip, only fallback to the latest if they used a generic phrase
+                // If their prompt is long (like "plan my trip for fly to america"), they are likely asking for a specific uncreated trip.
+                const isGenericRequest = prompt.trim().split(' ').length <= 4; 
+                
+                if (isGenericRequest) {
+                    const upcomingTrips = allTrips.filter(t => new Date(t.startDate) > new Date());
+                    if (upcomingTrips.length > 0) targetTrip = upcomingTrips[0];
+                }
+            }
+
+            if (!targetTrip) {
+                // Transition gracefully to PLAN_AD_HOC if no matching/upcoming trip exists
+                await PendingAction.findOneAndUpdate({ userId }, { action: 'PLAN_AD_HOC', step: 'COLLECTING', data: {} }, { upsert: true });
+                return res.status(200).json({ response: "I couldn't find a saved trip for that. Let's plan a new one! What should be the trip name?" });
             }
             
             console.log("AI Planner Invoked");
-            const planResponse = await generateTravelPlan(latestTrip);
+            const planResponse = await generateTravelPlan(targetTrip);
             return res.status(200).json({ response: planResponse });
         }
 

@@ -38,7 +38,9 @@ Please include the EXACT following sections in your response, formatted beautifu
 
 ABSOLUTE RESTRICTIONS:
 - Provide ONLY the travel plan in Markdown.
+- NEVER ask the user for more information. Do not generate a form. Do not ask for duration, dates, or budget. The details provided above are final.
 - NEVER generate: booked hotels, booked flights, reservation IDs, booking confirmations, airline ticket numbers, hotel names pretending they are reserved, fake prices presented as bookings, or statements like "I booked...". TravelSync is not a booking platform.
+- NEVER offer to book anything for the user. Do not say "Please let me know if you would like me to book flights or accommodation". You cannot book anything.
 - INSTEAD use wording such as: "Suggested accommodation", "Recommended area to stay", "Estimated transportation cost", "Suggested attraction".
 - Do NOT invent a user history.
 - Do NOT generate HTML, only Markdown.
@@ -52,7 +54,7 @@ ABSOLUTE RESTRICTIONS:
         const chatCompletion = await groq.chat.completions.create({
             messages: messages,
             model: "llama-3.1-8b-instant",
-            temperature: 0.7,
+            temperature: 0.2,
         });
 
         return chatCompletion.choices[0]?.message?.content || "Sorry, I could not generate the travel plan at this time.";
