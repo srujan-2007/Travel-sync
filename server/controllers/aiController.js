@@ -37,8 +37,8 @@ User is greeting or casual opening.
 Examples: hi, hello, hey, good morning, how are you
 
 2. CREATE_TRIP
-User explicitly wants to create or start planning a trip.
-Examples: create trip, plan a trip, add trip
+User explicitly wants to create a new trip record in the database.
+Examples: create trip, create a trip, add trip, new trip
 
 3. READ_TRIPS
 User wants to view or analyze trips.
@@ -251,10 +251,10 @@ const generateChatResponse = async (req, res, next) => {
             if (/\b(cancel|abort|stop|exit|quit|never mind)\b/i.test(p)) intent = 'CANCEL_WORKFLOW';
             else if (/\b(restart|start over|begin again)\b/i.test(p)) intent = 'RESTART_WORKFLOW';
             else if (/\b(help|what can you do|features)\b/i.test(p)) intent = 'HELP';
-            else if (/\b(?:create|plan|add|new)\b/i.test(p)) intent = 'CREATE_TRIP';
+            else if (/\b(?:create|add|new)\b/i.test(p) && !/\b(?:itinerary|plan|schedule)\b/i.test(p)) intent = 'CREATE_TRIP';
             else if (/\b(?:update|change|modify|edit)\b/i.test(p)) intent = 'UPDATE_TRIP';
             else if (/\b(?:delete|remove)\b/i.test(p)) intent = 'DELETE_TRIP';
-            else if (/\b(?:generate|plan|create)\b.*\b(?:itinerary|plan|schedule)\b/i.test(p)) intent = 'GENERATE_PLAN';
+            else if (/\b(?:generate|plan|create|build|suggest)\b.*\b(?:itinerary|plan|schedule)\b/i.test(p) || /\b(?:plan my trip|plan this trip)\b/i.test(p)) intent = 'GENERATE_PLAN';
             else if (readTripsRegexes.some(r => r.test(p))) intent = 'READ_TRIPS';
             else {
                 const isChatOrQuestion = /\b(?:hi|hello|hey|joke|weather|how are you|thank you|thanks|tell me|who are you|capital)\b/i.test(p) || /\?$/.test(p.trim());
@@ -863,6 +863,7 @@ const generateChatResponse = async (req, res, next) => {
                 return res.status(200).json({ response: "You don't have any trips saved yet. Let's create one first! What should be the trip name?" });
             }
             
+            console.log("AI Planner Invoked");
             const planResponse = await generateTravelPlan(latestTrip);
             return res.status(200).json({ response: planResponse });
         }

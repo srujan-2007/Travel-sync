@@ -6,6 +6,10 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
  */
 const generateTravelPlan = async (trip) => {
     try {
+        if (!trip.startDate || !trip.endDate) {
+            return "I'd love to generate a travel plan for you, but I need to know your travel dates first. What are your start and end dates?";
+        }
+
         const destination = trip.destination;
         const startDate = new Date(trip.startDate).toLocaleDateString();
         const endDate = new Date(trip.endDate).toLocaleDateString();
@@ -21,21 +25,23 @@ Your task is to generate a comprehensive, highly detailed travel plan based on t
 - Budget: $${budget}
 - Travelers: ${travelers}
 
-Please include the following sections in your response, formatted beautifully using Markdown:
-1. **Day-wise Itinerary**: A day-by-day breakdown of activities.
-2. **Attractions**: Must-see places and top sights.
-3. **Restaurants**: Where to eat based on the budget.
-4. **Local Transportation**: Advice on getting around.
-5. **Budget Breakdown**: How to allocate the $${budget}.
-6. **Weather Tips**: Expected weather and climate advice.
-7. **Packing Suggestions**: What to bring.
-8. **Travel Recommendations**: Local customs, etiquette, or safety tips.
+Please include the EXACT following sections in your response, formatted beautifully using Markdown:
+1. **Trip Summary**: A brief overview of the trip.
+2. **Day-wise Itinerary**: A day-by-day breakdown of activities.
+3. **Major Attractions**: Must-see places and top sights.
+4. **Local Transportation**: Advice on getting around and estimated costs.
+5. **Food Recommendations**: Where to eat based on the budget.
+6. **Estimated Budget Allocation**: How to allocate the $${budget}.
+7. **Weather Suggestions**: Expected weather and climate advice.
+8. **Packing Recommendations**: What to bring.
+9. **Local Travel Tips**: Local customs, etiquette, or safety tips.
 
-IMPORTANT RULES:
+ABSOLUTE RESTRICTIONS:
 - Provide ONLY the travel plan in Markdown.
-- DO NOT include hotel bookings, flight bookings, reservation IDs, airline names, hotel names, or any fake booking confirmations. TravelSync is not a booking platform.
-- At the very end of your response, explicitly ask the user: "Would you like me to save these activities or itinerary suggestions to your planner?"
-- DO NOT invent a user history or say things like "As I mentioned earlier".
+- NEVER generate: booked hotels, booked flights, reservation IDs, booking confirmations, airline ticket numbers, hotel names pretending they are reserved, fake prices presented as bookings, or statements like "I booked...". TravelSync is not a booking platform.
+- INSTEAD use wording such as: "Suggested accommodation", "Recommended area to stay", "Estimated transportation cost", "Suggested attraction".
+- Do NOT invent a user history.
+- Do NOT generate HTML, only Markdown.
 - Keep the tone professional, inspiring, and helpful.`;
 
         const messages = [
